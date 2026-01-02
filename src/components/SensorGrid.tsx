@@ -51,9 +51,14 @@ const SensorGrid = ({ deviceId, parameter: _parameter }: SensorGridProps) => {
                 // Find all heater profiles (HP_XXX) for this sensor
                 const heaterProfiles: Array<{ hpId: string; latestTimestamp: string }> = []
                 
+                // Debug: log all keys to see what we're working with
+                const allKeys = Object.keys(sensorData)
+                console.log(`[SensorGrid] ${sensorId} - All keys found:`, allKeys)
+                
                 Object.keys(sensorData).forEach((hpId) => {
-                  // Check if it's a heater profile (starts with HP_)
-                  if (hpId.startsWith('HP_')) {
+                  // Check if it's a heater profile (starts with Hp_ or HP_)
+                  // Note: Firebase data uses Hp_ (lowercase 'p')
+                  if (hpId.startsWith('Hp_') || hpId.startsWith('HP_')) {
                     const hpData = sensorData[hpId]
                     if (hpData && typeof hpData === 'object') {
                       // Get all timestamps for this heater profile
@@ -61,6 +66,8 @@ const SensorGrid = ({ deviceId, parameter: _parameter }: SensorGridProps) => {
                         const reading = hpData[ts]
                         return reading && typeof reading === 'object'
                       })
+                      
+                      console.log(`[SensorGrid] ${sensorId} - Found heater profile ${hpId} with ${timestamps.length} timestamps`)
                       
                       if (timestamps.length > 0) {
                         // Sort timestamps chronologically
@@ -90,11 +97,14 @@ const SensorGrid = ({ deviceId, parameter: _parameter }: SensorGridProps) => {
                   ? heaterProfiles[0].hpId 
                   : 'N/A'
                 
+                console.log(`[SensorGrid] ${sensorId} - Total heater profiles: ${heaterProfiles.length}, Active: ${activeHeaterProfile}`)
+                
                 sensorValues.push({
                   id: sensorId,
                   heaterProfile: activeHeaterProfile
                 })
               } else {
+                console.log(`[SensorGrid] ${sensorId} - No sensor data found`)
                 sensorValues.push({
                   id: sensorId,
                   heaterProfile: 'N/A'
