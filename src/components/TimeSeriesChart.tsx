@@ -9,7 +9,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts'
-import { subscribeToSensorTimeSeriesData, SensorTimeSeriesDataPoint } from '../services/deviceService'
+import { subscribeToSensorTimeSeriesData, SensorTimeSeriesDataPoint, formatTimestampForDisplay } from '../services/deviceService'
 import './TimeSeriesChart.css'
 
 interface TimeSeriesChartProps {
@@ -31,6 +31,61 @@ const TimeSeriesChart = ({ deviceId, parameter }: TimeSeriesChartProps) => {
   }
   
   const config = parameterConfig[parameter]
+  
+  // Calculate sampling rate from actual data
+  const calculateSamplingRate = (dataPoints: SensorTimeSeriesDataPoint[]): string => {
+    if (dataPoints.length < 2) {
+      return 'N/A'
+    }
+    
+    // Calculate average interval between consecutive timestamps
+    const intervals: number[] = []
+    for (let i = 1; i < dataPoints.length; i++) {
+      const interval = (dataPoints[i].timestamp - dataPoints[i - 1].timestamp) / 1000 // Convert to seconds
+      if (interval > 0) {
+        intervals.push(interval)
+      }
+    }
+    
+    if (intervals.length === 0) {
+      return 'N/A'
+    }
+    
+    const avgIntervalSeconds = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length
+    
+    // Format the sampling rate
+    if (avgIntervalSeconds < 60) {
+      return `${Math.round(avgIntervalSeconds)}s`
+    } else if (avgIntervalSeconds < 3600) {
+      const minutes = Math.round(avgIntervalSeconds / 60)
+      return `${minutes} min`
+    } else {
+      const hours = (avgIntervalSeconds / 3600).toFixed(1)
+      return `${hours} hr`
+    }
+  }
+  
+  // Calculate time range from actual data
+  const calculateTimeRange = (dataPoints: SensorTimeSeriesDataPoint[]): string => {
+    if (dataPoints.length < 2) {
+      return 'N/A'
+    }
+    
+    const firstTimestamp = dataPoints[0].timestamp
+    const lastTimestamp = dataPoints[dataPoints.length - 1].timestamp
+    const timeRangeSeconds = (lastTimestamp - firstTimestamp) / 1000 // Convert to seconds
+    
+    // Format the time range
+    if (timeRangeSeconds < 60) {
+      return `${Math.round(timeRangeSeconds)}s`
+    } else if (timeRangeSeconds < 3600) {
+      const minutes = Math.round(timeRangeSeconds / 60)
+      return `${minutes} min`
+    } else {
+      const hours = (timeRangeSeconds / 3600).toFixed(1)
+      return `${hours} hr`
+    }
+  }
   
   // Generate colors for 16 sensors (4 groups)
   const getSensorColor = (sensorId: string): string => {
@@ -131,6 +186,16 @@ const TimeSeriesChart = ({ deviceId, parameter }: TimeSeriesChartProps) => {
                 color: 'var(--text-primary)'
               }}
               labelStyle={{ color: 'var(--text-secondary)' }}
+              labelFormatter={(value) => {
+                // Find the data point with this timestamp
+                const dataPoint = data.find(d => d.timestamp === value)
+                if (dataPoint && dataPoint.timestampStr) {
+                  return formatTimestampForDisplay(dataPoint.timestampStr)
+                }
+                // Fallback: format the numeric timestamp
+                const date = new Date(value)
+                return date.toLocaleString()
+              }}
             />
             <Legend
               wrapperStyle={{ paddingTop: '20px' }}
@@ -216,11 +281,11 @@ const TimeSeriesChart = ({ deviceId, parameter }: TimeSeriesChartProps) => {
         </div>
         <div className="info-item">
           <span className="info-label">Sampling Rate:</span>
-          <span className="info-value">1 min</span>
+          <span className="info-value">{calculateSamplingRate(data)}</span>
         </div>
         <div className="info-item">
           <span className="info-label">Time Range:</span>
-          <span className="info-value">60 min</span>
+          <span className="info-value">{calculateTimeRange(data)}</span>
         </div>
       </div>
     </div>

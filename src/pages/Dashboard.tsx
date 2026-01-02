@@ -7,6 +7,7 @@ import Header from '../components/Header'
 import SensorGrid from '../components/SensorGrid'
 import TimeSeriesChart from '../components/TimeSeriesChart'
 import DeviceStatus from '../components/DeviceStatus'
+import CSVViewer from '../components/CSVViewer'
 import { getDevice, DeviceData } from '../services/deviceService'
 import './Dashboard.css'
 
@@ -24,6 +25,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedParameter, setSelectedParameter] = useState<ParameterType>('temperature')
+  const [showCSVViewer, setShowCSVViewer] = useState(false)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -255,7 +257,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
             <div className="section-header">
               <h2 className="section-title">Device Status & Control</h2>
             </div>
-            <DeviceStatus deviceId={deviceId!} />
+            <DeviceStatus deviceId={deviceId!} onViewData={() => setShowCSVViewer(true)} />
           </div>
         </div>
 
@@ -268,6 +270,14 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
             </div>
           </div>
         </div>
+      
+      {showCSVViewer && (
+        <CSVViewer
+          deviceId={deviceId!}
+          deviceName={device.name}
+          onClose={() => setShowCSVViewer(false)}
+        />
+      )}
     </div>
   )
 }

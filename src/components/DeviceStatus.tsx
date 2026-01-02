@@ -4,9 +4,10 @@ import './DeviceStatus.css'
 
 interface DeviceStatusProps {
   deviceId: string
+  onViewData?: () => void
 }
 
-const DeviceStatus = ({ deviceId }: DeviceStatusProps) => {
+const DeviceStatus = ({ deviceId, onViewData }: DeviceStatusProps) => {
   const [devices, setDevices] = useState<DeviceData[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -92,7 +93,7 @@ const DeviceStatus = ({ deviceId }: DeviceStatusProps) => {
             </div>
 
             <div className="device-actions">
-              <button className="action-button">View Data</button>
+              <button className="action-button" onClick={onViewData}>View Data</button>
               <button className="action-button">Configure</button>
             </div>
           </div>

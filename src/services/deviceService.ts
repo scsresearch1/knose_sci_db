@@ -58,19 +58,28 @@ export interface TimeSeriesDataPoint {
 export interface SensorTimeSeriesDataPoint {
   time: string
   timestamp: number
-  [sensorId: string]: string | number // Dynamic sensor IDs (BME01, BME02, etc.) with their values
+  timestampStr?: string // Original timestamp string for formatting (YYYY-MM-DD_HH-MM-SEC_NanoSEC)
+  [sensorId: string]: string | number | undefined // Dynamic sensor IDs (BME01, BME02, etc.) with their values
 }
 
 /**
  * Parse timestamp string to Date
+ * Format: "2026-01-01_15-13-29_679689000" (YYYY-MM-DD_HH-MM-SEC_NanoSEC)
  */
 export const parseTimestamp = (timestampStr: string): Date => {
-  // Format: "2025-01-01_19-29-47"
-  const [datePart, timePart] = timestampStr.split('_')
+  // Split by underscore: [datePart, timePart, nanoPart]
+  const parts = timestampStr.split('_')
+  if (parts.length < 2) {
+    console.error('Invalid timestamp format:', timestampStr)
+    return new Date(0)
+  }
+  
+  const [datePart, timePart] = parts
   if (!datePart || !timePart) {
     console.error('Invalid timestamp format:', timestampStr)
     return new Date(0)
   }
+  
   const [year, month, day] = datePart.split('-').map(Number)
   const [hour, minute, second] = timePart.split('-').map(Number)
   
@@ -81,6 +90,26 @@ export const parseTimestamp = (timestampStr: string): Date => {
   }
   
   return new Date(year, month - 1, day, hour, minute, second)
+}
+
+/**
+ * Format timestamp string to display format
+ * Input: "2026-01-01_15-13-29_679689000" (YYYY-MM-DD_HH-MM-SEC_NanoSEC)
+ * Output: "01-01-2026-15:13:29:679689000" (MM-DD-YYYY-HH:MM:SS:NS)
+ */
+export const formatTimestampForDisplay = (timestampStr: string): string => {
+  const parts = timestampStr.split('_')
+  if (parts.length < 2) {
+    return timestampStr // Return as-is if format is unexpected
+  }
+  
+  const [datePart, timePart, nanoPart] = parts
+  const [year, month, day] = datePart.split('-')
+  const [hour, minute, second] = timePart.split('-')
+  
+  // Format as MM-DD-YYYY-HH:MM:SS:NS
+  const formatted = `${month}-${day}-${year}-${hour}:${minute}:${second}${nanoPart ? `:${nanoPart}` : ''}`
+  return formatted
 }
 
 /**
@@ -716,7 +745,8 @@ export const subscribeToSensorTimeSeriesData = (
               const timestamp = parseTimestamp(timestampStr)
               const point: SensorTimeSeriesDataPoint = {
                 time: timestamp.toISOString().substring(11, 16), // HH:MM format for display
-                timestamp: timestamp.getTime() // Use timestamp for proper ordering
+                timestamp: timestamp.getTime(), // Use timestamp for proper ordering
+                timestampStr: timestampStr // Store original timestamp string for formatting
               }
               
               // Add each sensor's value
