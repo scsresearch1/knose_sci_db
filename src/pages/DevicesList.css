@@ -49,19 +49,62 @@
 .devices-subtitle {
   font-size: 1.25rem;
   color: #7dd3fc;
-  margin: 0;
+  margin: 0 0 1rem 0;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.devices-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  border-radius: 4px;
+  font-size: 0.9375rem;
+}
+
+.devices-count-label {
+  color: #7dd3fc;
+}
+
+.devices-count-value {
+  color: #00ff88;
+  font-weight: 600;
+  font-family: 'Courier New', monospace;
 }
 
 .devices-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
   gap: 2rem;
-  max-width: 1600px;
+  max-width: 1800px;
   margin: 0 auto;
+  padding-bottom: 2rem;
 }
 
-@media (max-width: 1200px) {
+/* Optimize for 10 devices: 5 columns on large screens, 4 on medium, 3 on small, 2 on tablet, 1 on mobile */
+@media (min-width: 2000px) {
+  .devices-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}
+
+@media (min-width: 1600px) and (max-width: 1999px) {
+  .devices-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+@media (min-width: 1200px) and (max-width: 1599px) {
+  .devices-grid {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1.75rem;
+  }
+}
+
+@media (max-width: 1199px) {
   .devices-grid {
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 1.5rem;
@@ -185,6 +228,27 @@
   padding: 4rem 2rem;
   color: #7dd3fc;
   font-size: 1.125rem;
+}
+
+.no-devices-hint {
+  margin-top: 0.5rem;
+  font-size: 0.9375rem;
+  color: #ffb800;
+  font-style: italic;
+}
+
+.devices-warning {
+  margin-top: 2rem;
+  padding: 1rem;
+  background: rgba(255, 184, 0, 0.1);
+  border: 1px solid rgba(255, 184, 0, 0.3);
+  border-radius: 4px;
+  text-align: center;
+  color: #ffb800;
+  font-size: 0.9375rem;
+  max-width: 1800px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 @media (max-width: 768px) {

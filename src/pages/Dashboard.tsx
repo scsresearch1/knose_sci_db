@@ -100,19 +100,25 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
         if (sensorId.startsWith('BME')) {
           const sensorData = deviceData[sensorId]
           
-          Object.keys(sensorData).forEach((timestampStr) => {
-            const reading = sensorData[timestampStr]
-            if (reading && typeof reading === 'object') {
-              const timestamp = parseTimestamp(timestampStr)
-              
-              allDataPoints.push({
-                sensorId,
-                timestamp: timestampStr,
-                timestampTime: timestamp.getTime(),
-                temperature: reading.TEMPERATURE || 0,
-                humidity: reading.HUMIDITY || 0,
-                voltage: reading.VOLTAGE || 0,
-                adc: reading.ADC || 0,
+          // Process Hp entries
+          Object.keys(sensorData).forEach((hpId) => {
+            const hpData = sensorData[hpId]
+            if (hpData && typeof hpData === 'object') {
+              Object.keys(hpData).forEach((timestampStr) => {
+                const reading = hpData[timestampStr]
+                if (reading && typeof reading === 'object') {
+                  const timestamp = parseTimestamp(timestampStr)
+                  
+                  allDataPoints.push({
+                    sensorId,
+                    timestamp: timestampStr,
+                    timestampTime: timestamp.getTime(),
+                    temperature: reading.temperature || 0,
+                    humidity: reading.humidity || 0,
+                    voltage: reading.voltage || 0,
+                    adc: reading.gas_adc || 0,
+                  })
+                }
               })
             }
           })

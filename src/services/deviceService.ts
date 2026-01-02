@@ -2,10 +2,10 @@ import { ref, onValue, off, get } from 'firebase/database'
 import { database } from '../config/firebase'
 
 export interface SensorDataPoint {
-  ADC: number
-  HUMIDITY: number
-  TEMPERATURE: number
-  VOLTAGE: number
+  gas_adc: number
+  humidity: number
+  temperature: number
+  voltage: number
 }
 
 export interface SensorTimestamp {
@@ -105,11 +105,13 @@ const formatLastUpdate = (timestampStr: string): string => {
  */
 interface FirebaseDeviceData {
   [sensorId: string]: {
-    [timestamp: string]: {
-      ADC?: number
-      HUMIDITY?: number
-      TEMPERATURE?: number
-      VOLTAGE?: number
+    [hpId: string]: {
+      [timestamp: string]: {
+        gas_adc?: number
+        humidity?: number
+        temperature?: number
+        voltage?: number
+      }
     }
   }
 }
@@ -120,35 +122,41 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
   let earliestTimestamp = ''
   let totalReadings = 0
 
-  // Process each sensor (BME01-BME16)
+  // Process each sensor (BME_01-BME_16 or BME01-BME16)
   Object.keys(deviceData).forEach((sensorId) => {
     if (sensorId.startsWith('BME')) {
       const sensorReadings: SensorTimestamp[] = []
       
-      // Process timestamp entries
-      Object.keys(deviceData[sensorId]).forEach((timestampStr) => {
-        const reading = deviceData[sensorId][timestampStr]
-        if (reading && typeof reading === 'object') {
-          sensorReadings.push({
-            timestamp: timestampStr,
-            data: {
-              ADC: reading.ADC || 0,
-              HUMIDITY: reading.HUMIDITY || 0,
-              TEMPERATURE: reading.TEMPERATURE || 0,
-              VOLTAGE: reading.VOLTAGE || 0,
-            },
+      // Process Hp entries (intermediate level)
+      Object.keys(deviceData[sensorId]).forEach((hpId) => {
+        const hpData = deviceData[sensorId][hpId]
+        if (hpData && typeof hpData === 'object') {
+          // Process timestamp entries within this Hp entry
+          Object.keys(hpData).forEach((timestampStr) => {
+            const reading = hpData[timestampStr]
+            if (reading && typeof reading === 'object') {
+              sensorReadings.push({
+                timestamp: timestampStr,
+                data: {
+                  gas_adc: reading.gas_adc || 0,
+                  humidity: reading.humidity || 0,
+                  temperature: reading.temperature || 0,
+                  voltage: reading.voltage || 0,
+                },
+              })
+              totalReadings++
+              
+              // Track latest timestamp
+              if (!latestTimestamp || timestampStr > latestTimestamp) {
+                latestTimestamp = timestampStr
+              }
+              
+              // Track earliest timestamp (for uptime calculation)
+              if (!earliestTimestamp || timestampStr < earliestTimestamp) {
+                earliestTimestamp = timestampStr
+              }
+            }
           })
-          totalReadings++
-          
-          // Track latest timestamp
-          if (!latestTimestamp || timestampStr > latestTimestamp) {
-            latestTimestamp = timestampStr
-          }
-          
-          // Track earliest timestamp (for uptime calculation)
-          if (!earliestTimestamp || timestampStr < earliestTimestamp) {
-            earliestTimestamp = timestampStr
-          }
         }
       })
 
@@ -185,11 +193,11 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
 
   // Calculate aggregate values from readings at the latest timestamp
   const avgTemperature = readingsAtLatestTimestamp.length > 0
-    ? readingsAtLatestTimestamp.reduce((sum, r) => sum + r.TEMPERATURE, 0) / readingsAtLatestTimestamp.length
+    ? readingsAtLatestTimestamp.reduce((sum, r) => sum + r.temperature, 0) / readingsAtLatestTimestamp.length
     : 0
 
   const avgVoltage = readingsAtLatestTimestamp.length > 0
-    ? readingsAtLatestTimestamp.reduce((sum, r) => sum + r.VOLTAGE, 0) / readingsAtLatestTimestamp.length
+    ? readingsAtLatestTimestamp.reduce((sum, r) => sum + r.voltage, 0) / readingsAtLatestTimestamp.length
     : 0
 
   // Determine status based on data freshness
@@ -268,10 +276,13 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
     }
   }
 
+  // Extract device number from Device_X format
+  const deviceNum = deviceId.replace('Device_', '').replace('device:', '')
+  
   return {
     id: deviceId,
-    name: `BME690 Sensor Array #${deviceId.replace('device:', '').padStart(2, '0')}`,
-    location: `Lab ${String.fromCharCode(64 + parseInt(deviceId.replace('device:', '')) % 3 + 1)} - Chamber ${Math.ceil(parseInt(deviceId.replace('device:', '')) / 3)}`,
+    name: `BME690 Sensor Array #${deviceNum.padStart(2, '0')}`,
+    location: `Lab ${String.fromCharCode(64 + (parseInt(deviceNum) || 1) % 3 + 1)} - Chamber ${Math.ceil((parseInt(deviceNum) || 1) / 3)}`,
     status,
     sensors,
     sensorCount: sensors.length,
@@ -306,6 +317,7 @@ const calculateSampleRate = (readings: SensorTimestamp[]): number => {
 
 /**
  * Subscribe to device data changes
+ * Supports all 10 devices: Device_1 through Device_10 (or device:01 through device:10)
  */
 export const subscribeToDevices = (
   callback: (devices: DeviceData[]) => void,
@@ -319,10 +331,17 @@ export const subscribeToDevices = (
       try {
         const data = snapshot.val()
         if (data) {
+          // Filter and process all devices matching Device_X or device:X pattern
+          // This will include Device_1 through Device_10 (or device:01 through device:10)
           const devicesArray: DeviceData[] = Object.keys(data)
-            .filter(key => key.startsWith('device:'))
+            .filter(key => key.startsWith('Device_') || key.startsWith('device:'))
             .map((deviceId) => processDeviceData(deviceId, data[deviceId]))
-            .sort((a, b) => a.id.localeCompare(b.id))
+            .sort((a, b) => {
+              // Sort by device number (1-10)
+              const numA = parseInt(a.id.replace('Device_', '').replace('device:', '')) || 0
+              const numB = parseInt(b.id.replace('Device_', '').replace('device:', '')) || 0
+              return numA - numB
+            })
           
           callback(devicesArray)
         } else {
@@ -389,18 +408,47 @@ export const subscribeToSensorReadings = (
           Object.keys(deviceData).forEach((sensorId) => {
             if (sensorId.startsWith('BME')) {
               const sensorData = deviceData[sensorId]
-              const timestamps = Object.keys(sensorData).sort()
               
-              if (timestamps.length > 0) {
-                const latestTimestamp = timestamps[timestamps.length - 1]
-                const latestData = sensorData[latestTimestamp]
-                const prevTimestamp = timestamps.length > 1 ? timestamps[timestamps.length - 2] : null
-                const prevData = prevTimestamp ? sensorData[prevTimestamp] : null
+              // Collect all timestamps from all Hp entries
+              const allTimestamps: Array<{ timestamp: string; data: SensorDataPoint }> = []
+              
+              Object.keys(sensorData).forEach((hpId) => {
+                const hpData = sensorData[hpId]
+                if (hpData && typeof hpData === 'object') {
+                  Object.keys(hpData).forEach((timestampStr) => {
+                    const reading = hpData[timestampStr]
+                    if (reading && typeof reading === 'object') {
+                      allTimestamps.push({
+                        timestamp: timestampStr,
+                        data: {
+                          gas_adc: reading.gas_adc || 0,
+                          humidity: reading.humidity || 0,
+                          temperature: reading.temperature || 0,
+                          voltage: reading.voltage || 0,
+                        }
+                      })
+                    }
+                  })
+                }
+              })
+              
+              // Sort timestamps chronologically
+              allTimestamps.sort((a, b) => {
+                const timeA = parseTimestamp(a.timestamp).getTime()
+                const timeB = parseTimestamp(b.timestamp).getTime()
+                return timeA - timeB
+              })
+              
+              if (allTimestamps.length > 0) {
+                const latestEntry = allTimestamps[allTimestamps.length - 1]
+                const latestData = latestEntry.data
+                const prevEntry = allTimestamps.length > 1 ? allTimestamps[allTimestamps.length - 2] : null
+                const prevData = prevEntry ? prevEntry.data : null
                 
                 // Determine trend
                 let trend: 'up' | 'down' | 'stable' = 'stable'
                 if (prevData) {
-                  const tempDiff = latestData.TEMPERATURE - prevData.TEMPERATURE
+                  const tempDiff = latestData.temperature - prevData.temperature
                   if (Math.abs(tempDiff) > 0.1) {
                     trend = tempDiff > 0 ? 'up' : 'down'
                   }
@@ -408,41 +456,41 @@ export const subscribeToSensorReadings = (
                 
                 // Determine status
                 let status: 'normal' | 'warning' | 'error' = 'normal'
-                if (latestData.TEMPERATURE > 30 || latestData.TEMPERATURE < 10) {
+                if (latestData.temperature > 30 || latestData.temperature < 10) {
                   status = 'warning'
                 }
-                if (latestData.VOLTAGE < 2.5) {
+                if (latestData.voltage < 2.5) {
                   status = 'error'
                 }
                 
                 readings.push({
                   id: sensorId,
                   name: `${sensorId} - Temperature`,
-                  value: latestData.TEMPERATURE,
+                  value: latestData.temperature,
                   unit: '°C',
                   status,
                   trend,
-                  timestamp: parseTimestamp(latestTimestamp).getTime(),
+                  timestamp: parseTimestamp(latestEntry.timestamp).getTime(),
                 })
                 
                 readings.push({
                   id: `${sensorId}-humidity`,
                   name: `${sensorId} - Humidity`,
-                  value: latestData.HUMIDITY,
+                  value: latestData.humidity,
                   unit: '%RH',
                   status,
                   trend,
-                  timestamp: parseTimestamp(latestTimestamp).getTime(),
+                  timestamp: parseTimestamp(latestEntry.timestamp).getTime(),
                 })
                 
                 readings.push({
                   id: `${sensorId}-voltage`,
                   name: `${sensorId} - Voltage`,
-                  value: latestData.VOLTAGE,
+                  value: latestData.voltage,
                   unit: 'V',
                   status,
                   trend,
-                  timestamp: parseTimestamp(latestTimestamp).getTime(),
+                  timestamp: parseTimestamp(latestEntry.timestamp).getTime(),
                 })
               }
             }
@@ -496,18 +544,24 @@ export const subscribeToTimeSeriesData = (
             if (sensorId.startsWith('BME')) {
               const sensorData = deviceData[sensorId]
               
-              Object.keys(sensorData).forEach((timestampStr) => {
-                const reading = sensorData[timestampStr]
-                if (reading && typeof reading === 'object') {
-                  const timestamp = parseTimestamp(timestampStr)
-                  
-                  allDataPoints.push({
-                    timestamp: timestamp.getTime(),
-                    time: timestamp.toISOString().substring(11, 16),
-                    temperature: reading.TEMPERATURE || 0,
-                    humidity: reading.HUMIDITY || 0,
-                    voltage: reading.VOLTAGE || 0,
-                    adc: reading.ADC || 0,
+              // Process Hp entries
+              Object.keys(sensorData).forEach((hpId) => {
+                const hpData = sensorData[hpId]
+                if (hpData && typeof hpData === 'object') {
+                  Object.keys(hpData).forEach((timestampStr) => {
+                    const reading = hpData[timestampStr]
+                    if (reading && typeof reading === 'object') {
+                      const timestamp = parseTimestamp(timestampStr)
+                      
+                      allDataPoints.push({
+                        timestamp: timestamp.getTime(),
+                        time: timestamp.toISOString().substring(11, 16),
+                        temperature: reading.temperature || 0,
+                        humidity: reading.humidity || 0,
+                        voltage: reading.voltage || 0,
+                        adc: reading.gas_adc || 0,
+                      })
+                    }
                   })
                 }
               })
@@ -607,16 +661,24 @@ export const subscribeToSensorTimeSeriesData = (
           sensorIds.forEach((sensorId) => {
             const sensorData = deviceData[sensorId]
             if (sensorData) {
-              Object.keys(sensorData).forEach((timestampStr) => {
-                const reading = sensorData[timestampStr]
-                if (reading && typeof reading === 'object') {
-                  const timestamp = parseTimestamp(timestampStr)
-                  const value = reading[parameter.toUpperCase()] || 0
-                  allDataPoints.push({
-                    timestampStr,
-                    timestamp: timestamp.getTime(),
-                    sensorId,
-                    value
+              // Process Hp entries
+              Object.keys(sensorData).forEach((hpId) => {
+                const hpData = sensorData[hpId]
+                if (hpData && typeof hpData === 'object') {
+                  Object.keys(hpData).forEach((timestampStr) => {
+                    const reading = hpData[timestampStr]
+                    if (reading && typeof reading === 'object') {
+                      const timestamp = parseTimestamp(timestampStr)
+                      // Map parameter names: adc -> gas_adc, others are lowercase
+                      const paramKey = parameter === 'adc' ? 'gas_adc' : parameter
+                      const value = reading[paramKey] || 0
+                      allDataPoints.push({
+                        timestampStr,
+                        timestamp: timestamp.getTime(),
+                        sensorId,
+                        value
+                      })
+                    }
                   })
                 }
               })
@@ -687,9 +749,14 @@ export const getAllDevices = async (): Promise<DeviceData[]> => {
     if (snapshot.exists()) {
       const data = snapshot.val()
       return Object.keys(data)
-        .filter(key => key.startsWith('device:'))
+        .filter(key => key.startsWith('Device_') || key.startsWith('device:'))
         .map((deviceId) => processDeviceData(deviceId, data[deviceId]))
-        .sort((a, b) => a.id.localeCompare(b.id))
+        .sort((a, b) => {
+          // Sort by device number
+          const numA = parseInt(a.id.replace('Device_', '').replace('device:', '')) || 0
+          const numB = parseInt(b.id.replace('Device_', '').replace('device:', '')) || 0
+          return numA - numB
+        })
     }
     return []
   } catch (error) {

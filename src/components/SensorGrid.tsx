@@ -54,21 +54,37 @@ const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
             sensorIds.forEach((sensorId) => {
               const sensorData = deviceData[sensorId]
               if (sensorData) {
-                // Get all timestamps for this sensor and sort them chronologically
-                const timestamps = Object.keys(sensorData).sort((a, b) => {
-                  const timeA = parseTimestamp(a).getTime()
-                  const timeB = parseTimestamp(b).getTime()
+                // Collect all timestamps from all Hp entries for this sensor
+                const allTimestamps: Array<{ timestamp: string; reading: any }> = []
+                
+                Object.keys(sensorData).forEach((hpId) => {
+                  const hpData = sensorData[hpId]
+                  if (hpData && typeof hpData === 'object') {
+                    Object.keys(hpData).forEach((timestampStr) => {
+                      const reading = hpData[timestampStr]
+                      if (reading && typeof reading === 'object') {
+                        allTimestamps.push({ timestamp: timestampStr, reading })
+                      }
+                    })
+                  }
+                })
+                
+                // Sort timestamps chronologically
+                allTimestamps.sort((a, b) => {
+                  const timeA = parseTimestamp(a.timestamp).getTime()
+                  const timeB = parseTimestamp(b.timestamp).getTime()
                   return timeA - timeB
                 })
                 
-                if (timestamps.length > 0) {
-                  // Get the latest timestamp for this specific sensor (chronologically)
-                  const latestTimestamp = timestamps[timestamps.length - 1]
-                  const reading = sensorData[latestTimestamp]
+                if (allTimestamps.length > 0) {
+                  // Get the latest reading for this specific sensor (chronologically)
+                  const latestEntry = allTimestamps[allTimestamps.length - 1]
+                  const reading = latestEntry.reading
                   
                   if (reading && typeof reading === 'object') {
                     // Get the value for the selected parameter
-                    const paramKey = parameter.toUpperCase() as 'TEMPERATURE' | 'HUMIDITY' | 'VOLTAGE' | 'ADC'
+                    // Map parameter names: adc -> gas_adc, others are lowercase
+                    const paramKey = parameter === 'adc' ? 'gas_adc' : parameter
                     const value = reading[paramKey] ?? 0
                     
                     sensorValues.push({
@@ -136,7 +152,9 @@ const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
   }
 
   const getSensorColor = (sensorId: string): string => {
-    const sensorNum = parseInt(sensorId.replace('BME', ''))
+    // Handle both BME_01 and BME01 formats
+    const sensorNumStr = sensorId.replace('BME_', '').replace('BME', '').replace('_', '')
+    const sensorNum = parseInt(sensorNumStr) || 1
     const group = Math.floor((sensorNum - 1) / 4)
     const colors = [
       ['#00d4ff', '#00a8cc', '#007a99', '#004c66'], // Group 1: Blues

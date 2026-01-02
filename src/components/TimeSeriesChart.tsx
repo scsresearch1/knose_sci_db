@@ -34,7 +34,9 @@ const TimeSeriesChart = ({ deviceId, parameter }: TimeSeriesChartProps) => {
   
   // Generate colors for 16 sensors (4 groups)
   const getSensorColor = (sensorId: string): string => {
-    const sensorNum = parseInt(sensorId.replace('BME', ''))
+    // Handle both BME_01 and BME01 formats
+    const sensorNumStr = sensorId.replace('BME_', '').replace('BME', '').replace('_', '')
+    const sensorNum = parseInt(sensorNumStr) || 1
     const group = Math.floor((sensorNum - 1) / 4)
     const colors = [
       ['#00d4ff', '#00a8cc', '#007a99', '#004c66'], // Group 1: Blues
