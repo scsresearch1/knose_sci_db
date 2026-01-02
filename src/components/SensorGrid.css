@@ -54,6 +54,15 @@
   font-family: 'Courier New', monospace;
 }
 
+.sensor-tile-heater-profile {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .sensor-tile-unit {
   font-size: 0.75rem;
   color: var(--text-secondary);

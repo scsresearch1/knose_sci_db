@@ -11,22 +11,16 @@ interface SensorGridProps {
 
 interface SensorValue {
   id: string
-  value: number
-  unit: string
+  heaterProfile: string // HP_301, HP_302, etc.
+  value?: number // Optional: parameter value if needed later
+  unit?: string // Optional: unit if needed later
 }
 
-const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
+const SensorGrid = ({ deviceId, parameter: _parameter }: SensorGridProps) => {
   const [sensors, setSensors] = useState<SensorValue[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const parameterConfig = {
-    temperature: { unit: '°C', label: 'Temperature' },
-    humidity: { unit: '%RH', label: 'Humidity' },
-    voltage: { unit: 'V', label: 'Voltage' },
-    adc: { unit: '', label: 'ADC' }
-  }
-
-  const config = parameterConfig[parameter]
+  // Note: parameter prop is kept for future use if needed, but currently showing heater profiles
 
   useEffect(() => {
     setIsLoading(true)
@@ -50,67 +44,60 @@ const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
             })
             sensorIds.sort()
             
-            // Get latest reading from each sensor individually (all 16 BME sensors)
+            // Get heater profile for each sensor individually (all 16 BME sensors)
             sensorIds.forEach((sensorId) => {
               const sensorData = deviceData[sensorId]
               if (sensorData) {
-                // Collect all timestamps from all heater profiles (HP_301, HP_302, etc.) for this sensor
-                const allTimestamps: Array<{ timestamp: string; reading: any }> = []
+                // Find all heater profiles (HP_XXX) for this sensor
+                const heaterProfiles: Array<{ hpId: string; latestTimestamp: string }> = []
                 
                 Object.keys(sensorData).forEach((hpId) => {
-                  const hpData = sensorData[hpId]
-                  if (hpData && typeof hpData === 'object') {
-                    Object.keys(hpData).forEach((timestampStr) => {
-                      const reading = hpData[timestampStr]
-                      if (reading && typeof reading === 'object') {
-                        allTimestamps.push({ timestamp: timestampStr, reading })
+                  // Check if it's a heater profile (starts with HP_)
+                  if (hpId.startsWith('HP_')) {
+                    const hpData = sensorData[hpId]
+                    if (hpData && typeof hpData === 'object') {
+                      // Get all timestamps for this heater profile
+                      const timestamps = Object.keys(hpData).filter(ts => {
+                        const reading = hpData[ts]
+                        return reading && typeof reading === 'object'
+                      })
+                      
+                      if (timestamps.length > 0) {
+                        // Sort timestamps chronologically
+                        timestamps.sort((a, b) => {
+                          const timeA = parseTimestamp(a).getTime()
+                          const timeB = parseTimestamp(b).getTime()
+                          return timeA - timeB
+                        })
+                        
+                        // Get the latest timestamp for this heater profile
+                        const latestTimestamp = timestamps[timestamps.length - 1]
+                        heaterProfiles.push({ hpId, latestTimestamp })
                       }
-                    })
+                    }
                   }
                 })
                 
-                // Sort timestamps chronologically
-                allTimestamps.sort((a, b) => {
-                  const timeA = parseTimestamp(a.timestamp).getTime()
-                  const timeB = parseTimestamp(b.timestamp).getTime()
-                  return timeA - timeB
+                // Sort heater profiles by latest timestamp (most recent first)
+                heaterProfiles.sort((a, b) => {
+                  const timeA = parseTimestamp(a.latestTimestamp).getTime()
+                  const timeB = parseTimestamp(b.latestTimestamp).getTime()
+                  return timeB - timeA // Descending order (newest first)
                 })
                 
-                if (allTimestamps.length > 0) {
-                  // Get the latest reading for this specific sensor (chronologically)
-                  const latestEntry = allTimestamps[allTimestamps.length - 1]
-                  const reading = latestEntry.reading
-                  
-                  if (reading && typeof reading === 'object') {
-                    // Get the value for the selected parameter
-                    // Map parameter names: adc -> gas_adc, others are lowercase
-                    const paramKey = parameter === 'adc' ? 'gas_adc' : parameter
-                    const value = reading[paramKey] ?? 0
-                    
-                    sensorValues.push({
-                      id: sensorId,
-                      value,
-                      unit: config.unit
-                    })
-                  } else {
-                    sensorValues.push({
-                      id: sensorId,
-                      value: 0,
-                      unit: config.unit
-                    })
-                  }
-                } else {
-                  sensorValues.push({
-                    id: sensorId,
-                    value: 0,
-                    unit: config.unit
-                  })
-                }
+                // Get the most active/recent heater profile
+                const activeHeaterProfile = heaterProfiles.length > 0 
+                  ? heaterProfiles[0].hpId 
+                  : 'N/A'
+                
+                sensorValues.push({
+                  id: sensorId,
+                  heaterProfile: activeHeaterProfile
+                })
               } else {
                 sensorValues.push({
                   id: sensorId,
-                  value: 0,
-                  unit: config.unit
+                  heaterProfile: 'N/A'
                 })
               }
             })
@@ -136,20 +123,10 @@ const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
       off(deviceRef)
       unsubscribe()
     }
-  }, [deviceId, parameter, config.unit])
+  }, [deviceId]) // Removed parameter and config.unit since we're showing heater profiles
 
-  const formatValue = (value: number): string => {
-    if (value >= 1000) {
-      return value.toFixed(0)
-    }
-    if (value >= 100) {
-      return value.toFixed(1)
-    }
-    if (value >= 10) {
-      return value.toFixed(2)
-    }
-    return value.toFixed(3)
-  }
+  // No longer needed since we're showing heater profiles, not values
+  // const formatValue = (value: number): string => { ... }
 
   const getSensorColor = (sensorId: string): string => {
     // Handle both BME_01 and BME01 formats
@@ -198,8 +175,7 @@ const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
                 <span className="sensor-tile-id">{sensor.id}</span>
               </div>
               <div className="sensor-tile-value-container">
-                <span className="sensor-tile-value">{formatValue(sensor.value)}</span>
-                <span className="sensor-tile-unit">{sensor.unit}</span>
+                <span className="sensor-tile-heater-profile">{sensor.heaterProfile}</span>
               </div>
             </div>
           ))}
