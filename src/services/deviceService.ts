@@ -14,17 +14,17 @@ export interface SensorTimestamp {
 }
 
 export interface SensorData {
-  id: string // BME01, BME02, etc.
+  id: string // BME_01 to BME_16 (16 sensors per device)
   readings: SensorTimestamp[]
   latestReading?: SensorDataPoint
 }
 
 export interface DeviceData {
-  id: string // device:01, device:02, etc.
+  id: string // Device_1 to Device_10 (10 devices total)
   name: string
   location: string
   status: 'online' | 'offline' | 'warning'
-  sensors: SensorData[]
+  sensors: SensorData[] // Should contain 16 sensors (BME_01 to BME_16)
   sensorCount: number
   lastUpdate: string
   // Calculated fields
@@ -102,10 +102,15 @@ const formatLastUpdate = (timestampStr: string): string => {
 
 /**
  * Process device data from Firebase
+ * Structure: Device_X -> BME_XX -> HP_XXX -> timestamp -> {gas_adc, humidity, temperature, voltage}
+ * - Device_1 to Device_10 (10 devices)
+ * - Each device has 16 BME sensors (BME_01 to BME_16)
+ * - Each sensor runs heater profiles like HP_301, HP_302, etc.
+ * - Each heater profile contains timestamped readings
  */
 interface FirebaseDeviceData {
   [sensorId: string]: {
-    [hpId: string]: {
+    [hpId: string]: { // HP_301, HP_302, etc. (heater profile IDs)
       [timestamp: string]: {
         gas_adc?: number
         humidity?: number
@@ -122,16 +127,17 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
   let earliestTimestamp = ''
   let totalReadings = 0
 
-  // Process each sensor (BME_01-BME_16 or BME01-BME16)
+  // Process each sensor (BME_01-BME_16 - all 16 sensors per device)
   Object.keys(deviceData).forEach((sensorId) => {
     if (sensorId.startsWith('BME')) {
       const sensorReadings: SensorTimestamp[] = []
       
-      // Process Hp entries (intermediate level)
+      // Process heater profile entries (HP_301, HP_302, etc.)
+      // Each sensor can have multiple heater profiles
       Object.keys(deviceData[sensorId]).forEach((hpId) => {
         const hpData = deviceData[sensorId][hpId]
         if (hpData && typeof hpData === 'object') {
-          // Process timestamp entries within this Hp entry
+          // Process timestamp entries within this heater profile
           Object.keys(hpData).forEach((timestampStr) => {
             const reading = hpData[timestampStr]
             if (reading && typeof reading === 'object') {
@@ -176,6 +182,14 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
         latestReading,
       })
     }
+  })
+
+  // Sort sensors by ID to ensure proper grouping (BME_01, BME_02, ..., BME_16)
+  sensors.sort((a, b) => {
+    // Extract sensor numbers for comparison
+    const numA = parseInt(a.id.replace('BME_', '').replace('BME', '').replace('_', '')) || 0
+    const numB = parseInt(b.id.replace('BME_', '').replace('BME', '').replace('_', '')) || 0
+    return numA - numB
   })
 
   // Get readings from the latest timestamp across all sensors
@@ -276,16 +290,16 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
     }
   }
 
-  // Extract device number from Device_X format
-  const deviceNum = deviceId.replace('Device_', '').replace('device:', '')
+  // Extract device number from Device_X format (Device_1, Device_2, etc.)
+  const deviceNum = deviceId.replace('Device_', '')
   
   return {
     id: deviceId,
     name: `BME690 Sensor Array #${deviceNum.padStart(2, '0')}`,
     location: `Lab ${String.fromCharCode(64 + (parseInt(deviceNum) || 1) % 3 + 1)} - Chamber ${Math.ceil((parseInt(deviceNum) || 1) / 3)}`,
     status,
-    sensors,
-    sensorCount: sensors.length,
+    sensors, // All 16 BME sensors grouped together for this device (BME_01 to BME_16)
+    sensorCount: sensors.length, // Should be 16 sensors per device
     lastUpdate: latestTimestamp ? formatLastUpdate(latestTimestamp) : 'Never',
     temperature: avgTemperature,
     voltage: avgVoltage,
@@ -317,7 +331,8 @@ const calculateSampleRate = (readings: SensorTimestamp[]): number => {
 
 /**
  * Subscribe to device data changes
- * Supports all 10 devices: Device_1 through Device_10 (or device:01 through device:10)
+ * Supports all 10 devices: Device_1 through Device_10
+ * Each device contains 16 BME sensors (BME_01 to BME_16) grouped together
  */
 export const subscribeToDevices = (
   callback: (devices: DeviceData[]) => void,
@@ -331,15 +346,15 @@ export const subscribeToDevices = (
       try {
         const data = snapshot.val()
         if (data) {
-          // Filter and process all devices matching Device_X or device:X pattern
-          // This will include Device_1 through Device_10 (or device:01 through device:10)
+          // Filter and process only devices matching Device_X pattern (Device_1 to Device_10)
+          // Each device contains 16 BME sensors grouped together
           const devicesArray: DeviceData[] = Object.keys(data)
-            .filter(key => key.startsWith('Device_') || key.startsWith('device:'))
+            .filter(key => key.startsWith('Device_') && /^Device_\d+$/.test(key))
             .map((deviceId) => processDeviceData(deviceId, data[deviceId]))
             .sort((a, b) => {
               // Sort by device number (1-10)
-              const numA = parseInt(a.id.replace('Device_', '').replace('device:', '')) || 0
-              const numB = parseInt(b.id.replace('Device_', '').replace('device:', '')) || 0
+              const numA = parseInt(a.id.replace('Device_', '')) || 0
+              const numB = parseInt(b.id.replace('Device_', '')) || 0
               return numA - numB
             })
           
@@ -404,12 +419,12 @@ export const subscribeToSensorReadings = (
         if (deviceData) {
           const readings: SensorReading[] = []
           
-          // Process each sensor
+          // Process each sensor (all 16 BME sensors)
           Object.keys(deviceData).forEach((sensorId) => {
             if (sensorId.startsWith('BME')) {
               const sensorData = deviceData[sensorId]
               
-              // Collect all timestamps from all Hp entries
+              // Collect all timestamps from all heater profiles (HP_301, HP_302, etc.)
               const allTimestamps: Array<{ timestamp: string; data: SensorDataPoint }> = []
               
               Object.keys(sensorData).forEach((hpId) => {
@@ -539,12 +554,12 @@ export const subscribeToTimeSeriesData = (
         if (deviceData) {
           const allDataPoints: TimeSeriesDataPoint[] = []
           
-          // Collect data from all sensors
+          // Collect data from all sensors (all 16 BME sensors per device)
           Object.keys(deviceData).forEach((sensorId) => {
             if (sensorId.startsWith('BME')) {
               const sensorData = deviceData[sensorId]
               
-              // Process Hp entries
+              // Process heater profile entries (HP_301, HP_302, etc.)
               Object.keys(sensorData).forEach((hpId) => {
                 const hpData = sensorData[hpId]
                 if (hpData && typeof hpData === 'object') {
@@ -661,7 +676,7 @@ export const subscribeToSensorTimeSeriesData = (
           sensorIds.forEach((sensorId) => {
             const sensorData = deviceData[sensorId]
             if (sensorData) {
-              // Process Hp entries
+              // Process heater profile entries (HP_301, HP_302, etc.)
               Object.keys(sensorData).forEach((hpId) => {
                 const hpData = sensorData[hpId]
                 if (hpData && typeof hpData === 'object') {
@@ -749,12 +764,12 @@ export const getAllDevices = async (): Promise<DeviceData[]> => {
     if (snapshot.exists()) {
       const data = snapshot.val()
       return Object.keys(data)
-        .filter(key => key.startsWith('Device_') || key.startsWith('device:'))
+        .filter(key => key.startsWith('Device_') && /^Device_\d+$/.test(key))
         .map((deviceId) => processDeviceData(deviceId, data[deviceId]))
         .sort((a, b) => {
-          // Sort by device number
-          const numA = parseInt(a.id.replace('Device_', '').replace('device:', '')) || 0
-          const numB = parseInt(b.id.replace('Device_', '').replace('device:', '')) || 0
+          // Sort by device number (1-10)
+          const numA = parseInt(a.id.replace('Device_', '')) || 0
+          const numB = parseInt(b.id.replace('Device_', '')) || 0
           return numA - numB
         })
     }

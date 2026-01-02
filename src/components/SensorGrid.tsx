@@ -50,11 +50,11 @@ const SensorGrid = ({ deviceId, parameter }: SensorGridProps) => {
             })
             sensorIds.sort()
             
-            // Get latest reading from each sensor individually
+            // Get latest reading from each sensor individually (all 16 BME sensors)
             sensorIds.forEach((sensorId) => {
               const sensorData = deviceData[sensorId]
               if (sensorData) {
-                // Collect all timestamps from all Hp entries for this sensor
+                // Collect all timestamps from all heater profiles (HP_301, HP_302, etc.) for this sensor
                 const allTimestamps: Array<{ timestamp: string; reading: any }> = []
                 
                 Object.keys(sensorData).forEach((hpId) => {

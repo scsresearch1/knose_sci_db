@@ -100,7 +100,8 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
         if (sensorId.startsWith('BME')) {
           const sensorData = deviceData[sensorId]
           
-          // Process Hp entries
+          // Process heater profile entries (HP_301, HP_302, etc.)
+          // Each sensor can have multiple heater profiles
           Object.keys(sensorData).forEach((hpId) => {
             const hpData = sensorData[hpId]
             if (hpData && typeof hpData === 'object') {
