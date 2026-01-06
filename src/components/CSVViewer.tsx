@@ -217,6 +217,20 @@ const extractProfileId = (hpString: string): string => {
 }
 
 /**
+ * Get the minimum temperature for a heater profile
+ */
+const getMinTemperature = (hpId: string): number => {
+  const profileId = extractProfileId(hpId)
+  const profile = HEATER_PROFILES[profileId]
+
+  if (!profile) {
+    return 0
+  }
+
+  return Math.min(...profile.steps.map(step => step.temperature))
+}
+
+/**
  * Calculate heater temperature based on profile and elapsed time within cycle
  */
 const calculateHeaterTemp = (hpId: string, elapsedSeconds: number): number => {
@@ -266,6 +280,7 @@ interface CSVDataRow {
   SeqNO: number
   TotalTime: string
   Heater_Temp: number
+  Step: number
 }
 
 const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
@@ -341,7 +356,11 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
         // Key: `${sensorId}_${hpId}`, Value: { cycleStartTime, lastTimestamp, profileDuration }
         const hpCycleInfo: Record<string, { cycleStartTime: number; lastTimestamp: number; profileDuration: number }> = {}
 
-        // Calculate SeqNO, TotalTime, and Heater_Temp
+        // Track step count per sensor
+        // Key: sensorId, Value: { stepCount, lastHeaterTemp, lastHpId }
+        const sensorStepInfo: Record<string, { stepCount: number; lastHeaterTemp: number; lastHpId: string }> = {}
+
+        // Calculate SeqNO, TotalTime, Heater_Temp, and Step
         const csvData: CSVDataRow[] = []
         let seqNo = 1
         let firstTimestamp: number | null = null
@@ -388,6 +407,34 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           // Calculate heater temperature based on HP profile and elapsed time
           const heaterTemp = calculateHeaterTemp(point.hpId, elapsedInCycleSeconds)
 
+          // Calculate Step count for this sensor
+          const stepInfo = sensorStepInfo[point.sensorId]
+          const minTemp = getMinTemperature(point.hpId)
+          
+          let stepCount = 1
+          if (stepInfo) {
+            // Check if HP changed - reset step count
+            if (stepInfo.lastHpId !== point.hpId) {
+              stepCount = 1
+            } else {
+              // Check if temperature hit the lowest value (reset condition)
+              // Reset if current temp is at or below minimum AND previous temp was above minimum
+              if (heaterTemp <= minTemp && stepInfo.lastHeaterTemp > minTemp) {
+                stepCount = 1
+              } else {
+                // Increment step count
+                stepCount = stepInfo.stepCount + 1
+              }
+            }
+          }
+
+          // Update step tracking info
+          sensorStepInfo[point.sensorId] = {
+            stepCount,
+            lastHeaterTemp: heaterTemp,
+            lastHpId: point.hpId,
+          }
+
           csvData.push({
             Device_ID: deviceId,
             Sensor_ID: point.sensorId,
@@ -400,6 +447,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             SeqNO: seqNo++,
             TotalTime: totalTimeFormatted,
             Heater_Temp: heaterTemp,
+            Step: stepCount,
           })
         })
 
@@ -436,7 +484,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
   const handleExport = () => {
     if (data.length === 0) return
 
-    const headers = ['Device_ID', 'Sensor_ID', 'HP', 'TimeStamp', 'Temp', 'Hu', 'Vol', 'ADC', 'SeqNO', 'TotalTime', 'Heater_Temp']
+    const headers = ['Device_ID', 'Sensor_ID', 'HP', 'TimeStamp', 'Temp', 'Hu', 'Vol', 'ADC', 'SeqNO', 'TotalTime', 'Heater_Temp', 'Step']
     const csvRows: string[] = [headers.join(',')]
 
     data.forEach((row) => {
@@ -452,6 +500,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
         row.SeqNO.toString(),
         row.TotalTime,
         row.Heater_Temp.toFixed(1),
+        row.Step.toString(),
       ]
       csvRows.push(csvRow.join(','))
     })
@@ -516,6 +565,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                     <th>SeqNO</th>
                     <th>TotalTime</th>
                     <th>Heater_Temp</th>
+                    <th>Step</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -532,6 +582,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                       <td>{row.SeqNO}</td>
                       <td>{row.TotalTime}</td>
                       <td>{row.Heater_Temp.toFixed(1)}</td>
+                      <td>{row.Step}</td>
                     </tr>
                   ))}
                 </tbody>

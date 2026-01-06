@@ -94,7 +94,6 @@ const DeviceStatus = ({ deviceId, onViewData }: DeviceStatusProps) => {
 
             <div className="device-actions">
               <button className="action-button" onClick={onViewData}>View Data</button>
-              <button className="action-button">Configure</button>
             </div>
           </div>
         ))}
