@@ -507,7 +507,7 @@ const normalizedMappingCache: Record<string, {
  * Uses timeStepMap if available, otherwise falls back to time-based calculation
  * Handles missing step intervals by normalizing step numbers sequentially
  */
-const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { step: number; temp: number; isAnomaly?: boolean } => {
+const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { step: number; temp: number; isAnomaly?: boolean; missedStep?: number } => {
   const profileId = extractProfileId(hpId)
   const profile = HEATER_PROFILES[profileId]
 
@@ -533,17 +533,44 @@ const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { s
       }
     }
 
-    const { normalizedMap } = normalizedMappingCache[profileId]
+    const { normalizedMap, anomalies } = normalizedMappingCache[profileId]
     
     // Find the appropriate step based on elapsed time
     // Find the last time point that is <= cyclePosition
     let selectedMapping = normalizedMap[0] // Default to first
+    let selectedIndex = 0
     
     // Search backwards to find the most recent time point <= cyclePosition
     for (let i = normalizedMap.length - 1; i >= 0; i--) {
       if (normalizedMap[i].time <= cyclePosition) {
         selectedMapping = normalizedMap[i]
+        selectedIndex = i
         break
+      }
+    }
+    
+    // Check if the previous step was missed
+    // The isAnomaly flag indicates that a step before this one was missed
+    let missedStep: number | undefined = undefined
+    if (selectedMapping.isAnomaly && anomalies.length > 0) {
+      const currentOriginalStep = selectedMapping.originalStep
+      
+      // Find the most recent missed step before the current step
+      // Get all anomalies that are less than the current original step
+      const relevantAnomalies = anomalies.filter(a => a < currentOriginalStep)
+      
+      if (relevantAnomalies.length > 0) {
+        // Get the most recent missed step (highest value that's still less than current)
+        missedStep = Math.max(...relevantAnomalies)
+      } else if (selectedIndex > 0) {
+        // Fallback: check gap between current and previous step
+        const previousMapping = normalizedMap[selectedIndex - 1]
+        const previousOriginalStep = previousMapping.originalStep
+        
+        // If there's a gap, the missed step is right before current
+        if (currentOriginalStep - previousOriginalStep > 1) {
+          missedStep = currentOriginalStep - 1
+        }
       }
     }
     
@@ -555,7 +582,8 @@ const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { s
     return { 
       step: selectedMapping.step, // Use normalized sequential step number
       temp: selectedMapping.temp,
-      isAnomaly: selectedMapping.isAnomaly
+      isAnomaly: selectedMapping.isAnomaly,
+      missedStep: missedStep
     }
   }
 
@@ -595,15 +623,48 @@ interface CSVDataRow {
   Heater_Temp: number
   Step: number
   Anomaly?: boolean // Flag indicating if this step has an anomaly (missing step interval)
+  MissedStep?: number // The step number that was missed before this step
 }
 
 const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
   const [allData, setAllData] = useState<CSVDataRow[]>([]) // Store all data
   const [filteredData, setFilteredData] = useState<CSVDataRow[]>([]) // Filtered data for display
+  const [displayData, setDisplayData] = useState<CSVDataRow[]>([]) // Paginated data for display
   const [availableDates, setAvailableDates] = useState<string[]>([]) // Available dates from Firebase
   const [selectedDate, setSelectedDate] = useState<string>('') // Selected date filter
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  
+  // Filter states
+  const [searchQuery, setSearchQuery] = useState<string>('')
+  const [selectedSensor, setSelectedSensor] = useState<string>('')
+  const [selectedHP, setSelectedHP] = useState<string>('')
+  const [selectedStep, setSelectedStep] = useState<string>('')
+  const [anomalyFilter, setAnomalyFilter] = useState<string>('all') // 'all', 'yes', 'no'
+  
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<{ key: keyof CSVDataRow | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' })
+  
+  // Column visibility
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
+    Device_ID: true,
+    Sensor_ID: true,
+    HP: true,
+    TimeStamp: true,
+    Temp: true,
+    Hu: true,
+    Vol: true,
+    ADC: true,
+    SeqNO: true,
+    TotalTime: true,
+    Heater_Temp: true,
+    Step: true,
+    Anomaly: true,
+  })
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [rowsPerPage, setRowsPerPage] = useState<number>(100)
 
   useEffect(() => {
     const loadData = async () => {
@@ -768,7 +829,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           // Calculate step number and temperature based on elapsed time within cycle
           // This uses timeStepMap if available, which maps time → step → temperature
           // Handles missing step intervals by normalizing step numbers sequentially
-          const { step: stepCount, temp: heaterTemp, isAnomaly } = calculateStepAndTempFromTime(point.hpId, elapsedInCycleSeconds)
+          const { step: stepCount, temp: heaterTemp, isAnomaly, missedStep } = calculateStepAndTempFromTime(point.hpId, elapsedInCycleSeconds)
           
           // Debug logging for step calculation issues
           if (stepCount === 1 && elapsedInCycleSeconds > 1 && csvData.length < 10) {
@@ -799,6 +860,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             Heater_Temp: heaterTemp,
             Step: stepCount,
             Anomaly: isAnomaly || false, // Mark if this step has an anomaly (missing step interval)
+            MissedStep: missedStep, // The step number that was missed
           })
         })
 
@@ -814,33 +876,113 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
     loadData()
   }, [deviceId])
 
-  // Filter data based on selected date
+  // Get unique values for filters
+  const uniqueSensors = Array.from(new Set(allData.map(row => row.Sensor_ID))).sort()
+  const uniqueHPs = Array.from(new Set(allData.map(row => row.HP))).sort()
+  const uniqueSteps = Array.from(new Set(allData.map(row => row.Step.toString()))).sort((a, b) => Number(a) - Number(b))
+
+  // Filter and sort data
   useEffect(() => {
-    if (selectedDate && allData.length > 0) {
-      const filtered = allData.filter((row) => {
-        // Extract date from timestamp (format: MM-DD-YYYY-HH:MM:SS:NS)
-        // Convert to YYYY-MM-DD for comparison with selectedDate
-        const timestampStr = row.TimeStamp // Format: "MM-DD-YYYY-HH:MM:SS:NS"
-        // Split by '-' and take first 3 parts: MM, DD, YYYY
+    let filtered = [...allData]
+
+    // Date filter
+    if (selectedDate) {
+      filtered = filtered.filter((row) => {
+        const timestampStr = row.TimeStamp
         const parts = timestampStr.split('-')
         if (parts.length >= 3) {
           const month = parts[0]?.padStart(2, '0') || ''
           const day = parts[1]?.padStart(2, '0') || ''
           const year = parts[2] || ''
-          // Reconstruct as YYYY-MM-DD for comparison
           const formattedDate = `${year}-${month}-${day}`
           return formattedDate === selectedDate
         }
         return false
       })
-      setFilteredData(filtered)
-    } else if (allData.length > 0) {
-      // If no date selected, show all data
-      setFilteredData(allData)
-    } else {
-      setFilteredData([])
     }
-  }, [selectedDate, allData])
+
+    // Sensor filter
+    if (selectedSensor) {
+      filtered = filtered.filter(row => row.Sensor_ID === selectedSensor)
+    }
+
+    // HP filter
+    if (selectedHP) {
+      filtered = filtered.filter(row => row.HP === selectedHP)
+    }
+
+    // Step filter
+    if (selectedStep) {
+      filtered = filtered.filter(row => row.Step.toString() === selectedStep)
+    }
+
+    // Anomaly filter
+    if (anomalyFilter === 'yes') {
+      filtered = filtered.filter(row => row.Anomaly === true)
+    } else if (anomalyFilter === 'no') {
+      filtered = filtered.filter(row => row.Anomaly === false)
+    }
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase()
+      filtered = filtered.filter(row => 
+        Object.values(row).some(value => 
+          value?.toString().toLowerCase().includes(query)
+        )
+      )
+    }
+
+    // Sorting
+    if (sortConfig.key) {
+      filtered.sort((a, b) => {
+        const aVal = a[sortConfig.key!]
+        const bVal = b[sortConfig.key!]
+        
+        if (aVal === undefined || aVal === null) return 1
+        if (bVal === undefined || bVal === null) return -1
+        
+        if (typeof aVal === 'number' && typeof bVal === 'number') {
+          return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal
+        }
+        
+        const aStr = aVal.toString()
+        const bStr = bVal.toString()
+        
+        if (sortConfig.direction === 'asc') {
+          return aStr.localeCompare(bStr)
+        } else {
+          return bStr.localeCompare(aStr)
+        }
+      })
+    }
+
+    setFilteredData(filtered)
+    setCurrentPage(1) // Reset to first page when filters change
+  }, [selectedDate, allData, selectedSensor, selectedHP, selectedStep, anomalyFilter, searchQuery, sortConfig])
+
+  // Pagination
+  useEffect(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage
+    const endIndex = startIndex + rowsPerPage
+    setDisplayData(filteredData.slice(startIndex, endIndex))
+  }, [filteredData, currentPage, rowsPerPage])
+
+  const totalPages = Math.ceil(filteredData.length / rowsPerPage)
+
+  const handleSort = (key: keyof CSVDataRow) => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }))
+  }
+
+  const toggleColumnVisibility = (column: string) => {
+    setVisibleColumns(prev => ({
+      ...prev,
+      [column]: !prev[column]
+    }))
+  }
 
   const formatTotalTime = (seconds: number): string => {
     const days = Math.floor(seconds / 86400)
@@ -860,30 +1002,39 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
     }
   }
 
-  const handleExport = () => {
-    if (allData.length === 0) return
+  const handleExport = (exportFiltered = false) => {
+    const dataToExport = exportFiltered ? filteredData : allData
+    if (dataToExport.length === 0) return
 
-    const headers = ['Device_ID', 'Sensor_ID', 'HP', 'TimeStamp', 'Temp', 'Hu', 'Vol', 'ADC', 'SeqNO', 'TotalTime', 'Heater_Temp', 'Step', 'Anomaly']
-    const csvRows: string[] = [headers.join(',')]
+    // Only include visible columns
+    const visibleHeaders = Object.entries(visibleColumns)
+      .filter(([_, visible]) => visible)
+      .map(([key, _]) => key)
+    
+    const csvRows: string[] = [visibleHeaders.join(',')]
 
-    // Export ALL data: all sensors (BME_01 to BME_16), all heater profiles, all timestamps, all dates
-    // This exports everything for the selected device, regardless of date filter
-    allData.forEach((row) => {
-      const csvRow = [
-        row.Device_ID,
-        row.Sensor_ID,
-        row.HP,
-        row.TimeStamp,
-        row.Temp.toFixed(3),
-        row.Hu.toFixed(3),
-        row.Vol.toFixed(3),
-        row.ADC.toFixed(3),
-        row.SeqNO.toString(),
-        row.TotalTime,
-        row.Heater_Temp.toFixed(1),
-        row.Step.toString(),
-        row.Anomaly ? 'Yes' : 'No', // Anomaly flag: Yes if step interval is missing
-      ]
+    dataToExport.forEach((row) => {
+      const csvRow: string[] = []
+      visibleHeaders.forEach(header => {
+        const value = row[header as keyof CSVDataRow]
+        if (typeof value === 'number') {
+          if (header === 'Temp' || header === 'Hu' || header === 'Vol' || header === 'ADC') {
+            csvRow.push(value.toFixed(3))
+          } else if (header === 'Heater_Temp') {
+            csvRow.push(value.toFixed(1))
+          } else {
+            csvRow.push(value.toString())
+          }
+        } else if (header === 'Anomaly') {
+          if (value && row.MissedStep) {
+            csvRow.push(`Previous step ${row.MissedStep} missed`)
+          } else {
+            csvRow.push(value ? 'Yes' : 'No')
+          }
+        } else {
+          csvRow.push(value?.toString() || '')
+        }
+      })
       csvRows.push(csvRow.join(','))
     })
 
@@ -892,8 +1043,12 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
 
+    const filename = exportFiltered 
+      ? `${deviceName.replace(/\s+/g, '_')}_filtered_${new Date().toISOString().split('T')[0]}.csv`
+      : `${deviceName.replace(/\s+/g, '_')}_all_data_${new Date().toISOString().split('T')[0]}.csv`
+
     link.setAttribute('href', url)
-    link.setAttribute('download', `${deviceName.replace(/\s+/g, '_')}_all_data_${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute('download', filename)
     link.style.visibility = 'hidden'
 
     document.body.appendChild(link)
@@ -907,11 +1062,45 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
         <div className="csv-viewer-header">
           <h2 className="csv-viewer-title">CSV Data Viewer - {deviceName}</h2>
           <div className="csv-viewer-controls">
-            <div className="csv-viewer-date-selector">
-              <label htmlFor="date-select" className="date-select-label">Select Date:</label>
+            <button 
+              className="csv-viewer-button csv-viewer-export" 
+              onClick={() => handleExport(true)}
+              disabled={filteredData.length === 0}
+              title="Download filtered CSV file"
+            >
+              📥 Export Filtered
+            </button>
+            <button 
+              className="csv-viewer-button csv-viewer-export" 
+              onClick={() => handleExport(false)}
+              disabled={allData.length === 0}
+              title="Download all CSV data"
+            >
+              📥 Export All
+            </button>
+            <button className="csv-viewer-button csv-viewer-close" onClick={onClose}>
+              ✕ Close
+            </button>
+          </div>
+        </div>
+
+        {/* Filter Panel */}
+        <div className="csv-viewer-filters">
+          <div className="filter-row">
+            <div className="filter-group">
+              <label>Search:</label>
+              <input
+                type="text"
+                className="filter-input"
+                placeholder="Search all columns..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <div className="filter-group">
+              <label>Date:</label>
               <select
-                id="date-select"
-                className="date-select"
+                className="filter-select"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
                 disabled={isLoading || availableDates.length === 0}
@@ -922,7 +1111,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                   <>
                     <option value="">All Dates</option>
                     {availableDates.map((date) => {
-                      // Format date for display: YYYY-MM-DD -> MM/DD/YYYY
                       const [year, month, day] = date.split('-')
                       const displayDate = `${month}/${day}/${year}`
                       return (
@@ -935,18 +1123,90 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                 )}
               </select>
             </div>
+            <div className="filter-group">
+              <label>Sensor:</label>
+              <select
+                className="filter-select"
+                value={selectedSensor}
+                onChange={(e) => setSelectedSensor(e.target.value)}
+              >
+                <option value="">All Sensors</option>
+                {uniqueSensors.map(sensor => (
+                  <option key={sensor} value={sensor}>{sensor}</option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-group">
+              <label>HP:</label>
+              <select
+                className="filter-select"
+                value={selectedHP}
+                onChange={(e) => setSelectedHP(e.target.value)}
+              >
+                <option value="">All HP</option>
+                {uniqueHPs.map(hp => (
+                  <option key={hp} value={hp}>{hp}</option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-group">
+              <label>Step:</label>
+              <select
+                className="filter-select"
+                value={selectedStep}
+                onChange={(e) => setSelectedStep(e.target.value)}
+              >
+                <option value="">All Steps</option>
+                {uniqueSteps.map(step => (
+                  <option key={step} value={step}>Step {step}</option>
+                ))}
+              </select>
+            </div>
+            <div className="filter-group">
+              <label>Anomaly:</label>
+              <select
+                className="filter-select"
+                value={anomalyFilter}
+                onChange={(e) => setAnomalyFilter(e.target.value)}
+              >
+                <option value="all">All</option>
+                <option value="yes">Yes Only</option>
+                <option value="no">No Only</option>
+              </select>
+            </div>
             <button 
-              className="csv-viewer-button csv-viewer-export" 
-              onClick={handleExport}
-              disabled={filteredData.length === 0}
-              title="Download CSV file"
+              className="filter-clear-btn"
+              onClick={() => {
+                setSearchQuery('')
+                setSelectedDate('')
+                setSelectedSensor('')
+                setSelectedHP('')
+                setSelectedStep('')
+                setAnomalyFilter('all')
+              }}
             >
-              📥 Export CSV
-            </button>
-            <button className="csv-viewer-button csv-viewer-close" onClick={onClose}>
-              ✕ Close
+              Clear Filters
             </button>
           </div>
+        </div>
+
+        {/* Column Visibility Toggle */}
+        <div className="csv-viewer-column-toggle">
+          <details>
+            <summary>Toggle Columns</summary>
+            <div className="column-checkboxes">
+              {Object.keys(visibleColumns).map(column => (
+                <label key={column} className="column-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns[column]}
+                    onChange={() => toggleColumnVisibility(column)}
+                  />
+                  {column}
+                </label>
+              ))}
+            </div>
+          </details>
         </div>
 
         <div className="csv-viewer-content">
@@ -964,43 +1224,168 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
               <table className="csv-viewer-table">
                 <thead>
                   <tr>
-                    <th>Device_ID</th>
-                    <th>Sensor_ID</th>
-                    <th>HP</th>
-                    <th>TimeStamp</th>
-                    <th>Temp</th>
-                    <th>Hu</th>
-                    <th>Vol</th>
-                    <th>ADC</th>
-                    <th>SeqNO</th>
-                    <th>TotalTime</th>
-                    <th>Heater_Temp</th>
-                    <th>Step</th>
-                    <th>Anomaly</th>
+                    {visibleColumns.Device_ID && (
+                      <th onClick={() => handleSort('Device_ID')} className="sortable">
+                        Device_ID {sortConfig.key === 'Device_ID' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Sensor_ID && (
+                      <th onClick={() => handleSort('Sensor_ID')} className="sortable">
+                        Sensor_ID {sortConfig.key === 'Sensor_ID' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.HP && (
+                      <th onClick={() => handleSort('HP')} className="sortable">
+                        HP {sortConfig.key === 'HP' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.TimeStamp && (
+                      <th onClick={() => handleSort('TimeStamp')} className="sortable">
+                        TimeStamp {sortConfig.key === 'TimeStamp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Temp && (
+                      <th onClick={() => handleSort('Temp')} className="sortable">
+                        Temp {sortConfig.key === 'Temp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Hu && (
+                      <th onClick={() => handleSort('Hu')} className="sortable">
+                        Hu {sortConfig.key === 'Hu' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Vol && (
+                      <th onClick={() => handleSort('Vol')} className="sortable">
+                        Vol {sortConfig.key === 'Vol' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.ADC && (
+                      <th onClick={() => handleSort('ADC')} className="sortable">
+                        ADC {sortConfig.key === 'ADC' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.SeqNO && (
+                      <th onClick={() => handleSort('SeqNO')} className="sortable">
+                        SeqNO {sortConfig.key === 'SeqNO' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.TotalTime && (
+                      <th onClick={() => handleSort('TotalTime')} className="sortable">
+                        TotalTime {sortConfig.key === 'TotalTime' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Heater_Temp && (
+                      <th onClick={() => handleSort('Heater_Temp')} className="sortable">
+                        Heater_Temp {sortConfig.key === 'Heater_Temp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Step && (
+                      <th onClick={() => handleSort('Step')} className="sortable">
+                        Step {sortConfig.key === 'Step' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Anomaly && (
+                      <th onClick={() => handleSort('Anomaly')} className="sortable">
+                        Anomaly {sortConfig.key === 'Anomaly' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredData.map((row, index) => (
-                    <tr key={index} className={row.Anomaly ? 'anomaly-row' : ''}>
-                      <td>{row.Device_ID}</td>
-                      <td>{row.Sensor_ID}</td>
-                      <td>{row.HP}</td>
-                      <td>{row.TimeStamp}</td>
-                      <td>{row.Temp.toFixed(3)}</td>
-                      <td>{row.Hu.toFixed(3)}</td>
-                      <td>{row.Vol.toFixed(3)}</td>
-                      <td>{row.ADC.toFixed(3)}</td>
-                      <td>{row.SeqNO}</td>
-                      <td>{row.TotalTime}</td>
-                      <td>{row.Heater_Temp.toFixed(1)}</td>
-                      <td>{row.Step}</td>
-                      <td className={row.Anomaly ? 'anomaly-cell' : ''}>{row.Anomaly ? '⚠️ Yes' : 'No'}</td>
+                  {displayData.length === 0 ? (
+                    <tr>
+                      <td colSpan={Object.values(visibleColumns).filter(v => v).length} className="no-data">
+                        No data to display
+                      </td>
                     </tr>
-                  ))}
+                  ) : (
+                    displayData.map((row, index) => (
+                      <tr key={index} className={row.Anomaly ? 'anomaly-row' : ''}>
+                        {visibleColumns.Device_ID && <td>{row.Device_ID}</td>}
+                        {visibleColumns.Sensor_ID && <td>{row.Sensor_ID}</td>}
+                        {visibleColumns.HP && <td>{row.HP}</td>}
+                        {visibleColumns.TimeStamp && <td>{row.TimeStamp}</td>}
+                        {visibleColumns.Temp && <td>{row.Temp.toFixed(3)}</td>}
+                        {visibleColumns.Hu && <td>{row.Hu.toFixed(3)}</td>}
+                        {visibleColumns.Vol && <td>{row.Vol.toFixed(3)}</td>}
+                        {visibleColumns.ADC && <td>{row.ADC.toFixed(3)}</td>}
+                        {visibleColumns.SeqNO && <td>{row.SeqNO}</td>}
+                        {visibleColumns.TotalTime && <td>{row.TotalTime}</td>}
+                        {visibleColumns.Heater_Temp && <td>{row.Heater_Temp.toFixed(1)}</td>}
+                        {visibleColumns.Step && <td>{row.Step}</td>}
+                        {visibleColumns.Anomaly && (
+                          <td className={row.Anomaly ? 'anomaly-cell' : ''}>
+                            {row.Anomaly && row.MissedStep 
+                              ? `⚠️ Previous step ${row.MissedStep} missed` 
+                              : row.Anomaly 
+                                ? '⚠️ Yes' 
+                                : 'No'}
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
               <div className="csv-viewer-footer">
-                <p>Total Records: {filteredData.length} {selectedDate && `(Filtered by ${selectedDate})`}</p>
+                <div className="footer-info">
+                  <span>Showing {displayData.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} - {Math.min(currentPage * rowsPerPage, filteredData.length)} of {filteredData.length} records</span>
+                  {filteredData.length !== allData.length && (
+                    <span className="filter-indicator">(Filtered from {allData.length} total)</span>
+                  )}
+                </div>
+                <div className="pagination-controls">
+                  <label>
+                    Rows per page:
+                    <select
+                      className="rows-per-page-select"
+                      value={rowsPerPage}
+                      onChange={(e) => {
+                        setRowsPerPage(Number(e.target.value))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={200}>200</option>
+                      <option value={500}>500</option>
+                      <option value={1000}>1000</option>
+                    </select>
+                  </label>
+                  <div className="pagination-buttons">
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                    >
+                      ««
+                    </button>
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                    >
+                      «
+                    </button>
+                    <span className="page-info">
+                      Page {currentPage} of {totalPages || 1}
+                    </span>
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                      »
+                    </button>
+                    <button
+                      className="pagination-btn"
+                      onClick={() => setCurrentPage(totalPages)}
+                      disabled={currentPage === totalPages || totalPages === 0}
+                    >
+                      »»
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           )}

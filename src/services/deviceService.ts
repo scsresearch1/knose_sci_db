@@ -253,13 +253,22 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
     : 0
 
   // Determine status based on data freshness
+  // When data is actively updating in Firebase, status should be 'online'
   const lastUpdateTime = latestTimestamp ? parseTimestamp(latestTimestamp) : new Date(0)
-  const secondsSinceUpdate = (new Date().getTime() - lastUpdateTime.getTime()) / 1000
+  const now = new Date()
+  const secondsSinceUpdate = (now.getTime() - lastUpdateTime.getTime()) / 1000
+  
+  // Status determination:
+  // - 'online': Data updated within last 60 seconds (actively updating)
+  // - 'warning': Data updated 60-120 seconds ago (slowing down)
+  // - 'offline': No updates for more than 120 seconds (stopped updating)
   let status: 'online' | 'offline' | 'warning' = 'online'
-  if (secondsSinceUpdate > 300) {
+  if (secondsSinceUpdate > 120) {
     status = 'offline'
   } else if (secondsSinceUpdate > 60) {
     status = 'warning'
+  } else {
+    status = 'online' // Data is actively updating
   }
 
   // Calculate uptime: sum of intervals between consecutive timestamps
@@ -378,17 +387,54 @@ export const subscribeToDevices = (
 ) => {
   const devicesRef = ref(database)
   
+  // Track last data snapshot to detect when data is actively updating
+  const deviceDataHashes: Record<string, string> = {}
+  
   const unsubscribe = onValue(
     devicesRef,
     (snapshot) => {
       try {
         const data = snapshot.val()
+        const currentTime = Date.now()
+        
         if (data) {
           // Filter and process only devices matching Device_X pattern (Device_1 to Device_10)
           // Each device contains 16 BME sensors grouped together
           const devicesArray: DeviceData[] = Object.keys(data)
             .filter(key => key.startsWith('Device_') && /^Device_\d+$/.test(key))
-            .map((deviceId) => processDeviceData(deviceId, data[deviceId]))
+            .map((deviceId) => {
+              const deviceData = data[deviceId]
+              
+              // Create a simple hash of the device data to detect changes
+              const dataHash = JSON.stringify(deviceData)
+              const hasNewData = deviceDataHashes[deviceId] !== dataHash
+              
+              // Update hash for this device
+              deviceDataHashes[deviceId] = dataHash
+              
+              const processedDevice = processDeviceData(deviceId, deviceData)
+              
+              // If Firebase just received new data (data changed), immediately set to 'online'
+              // This ensures status updates immediately when data is actively updating
+              if (hasNewData && processedDevice.sensors.length > 0) {
+                // Check if there's any recent data (within last 5 minutes)
+                const allTimestamps = processedDevice.sensors
+                  .flatMap(s => s.readings)
+                  .map(r => parseTimestamp(r.timestamp).getTime())
+                
+                if (allTimestamps.length > 0) {
+                  const latestTimestamp = Math.max(...allTimestamps)
+                  const secondsSinceLatest = (currentTime - latestTimestamp) / 1000
+                  
+                  // If data exists and is being updated (new data received), set to online
+                  if (secondsSinceLatest < 300) {
+                    processedDevice.status = 'online'
+                  }
+                }
+              }
+              
+              return processedDevice
+            })
             .sort((a, b) => {
               // Sort by device number (1-10)
               const numA = parseInt(a.id.replace('Device_', '')) || 0
