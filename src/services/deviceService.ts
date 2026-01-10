@@ -156,6 +156,15 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
   let earliestTimestamp = ''
   let totalReadings = 0
 
+  // Debug: Log device structure to verify Firebase mapping
+  const deviceKeys = Object.keys(deviceData)
+  const sensorKeys = deviceKeys.filter(key => key.startsWith('BME'))
+  console.log(`[deviceService] Processing ${deviceId}:`, {
+    totalKeys: deviceKeys.length,
+    sensorKeys: sensorKeys,
+    sensorCount: sensorKeys.length
+  })
+
   // Process each sensor (BME_01-BME_16 - all 16 sensors per device)
   Object.keys(deviceData).forEach((sensorId) => {
     if (sensorId.startsWith('BME')) {
@@ -413,7 +422,7 @@ export const subscribeToDevices = (
 }
 
 /**
- * Get a single device by ID
+ * Get a single device by ID (one-time fetch)
  */
 export const getDevice = async (deviceId: string): Promise<DeviceData | null> => {
   try {
@@ -427,6 +436,50 @@ export const getDevice = async (deviceId: string): Promise<DeviceData | null> =>
   } catch (error) {
     console.error('Error fetching device:', error)
     throw error
+  }
+}
+
+/**
+ * Subscribe to real-time updates for a single device
+ */
+export const subscribeToDevice = (
+  deviceId: string,
+  callback: (device: DeviceData | null) => void,
+  onError?: (error: Error) => void
+) => {
+  const deviceRef = ref(database, deviceId)
+  
+  const unsubscribe = onValue(
+    deviceRef,
+    (snapshot) => {
+      try {
+        if (snapshot.exists()) {
+          const rawData = snapshot.val()
+          console.log(`[deviceService] subscribeToDevice(${deviceId}): Received data, keys:`, Object.keys(rawData))
+          const deviceData = processDeviceData(deviceId, rawData)
+          callback(deviceData)
+        } else {
+          console.warn(`[deviceService] subscribeToDevice(${deviceId}): Device not found in Firebase`)
+          callback(null)
+        }
+      } catch (error) {
+        console.error('Error processing device:', error)
+        if (onError) {
+          onError(error as Error)
+        }
+      }
+    },
+    (error) => {
+      console.error('Firebase error:', error)
+      if (onError) {
+        onError(error)
+      }
+    }
+  )
+
+  return () => {
+    off(deviceRef)
+    unsubscribe()
   }
 }
 

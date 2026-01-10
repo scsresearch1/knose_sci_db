@@ -8,7 +8,7 @@ import SensorGrid from '../components/SensorGrid'
 import TimeSeriesChart from '../components/TimeSeriesChart'
 import DeviceStatus from '../components/DeviceStatus'
 import CSVViewer from '../components/CSVViewer'
-import { getDevice, DeviceData } from '../services/deviceService'
+import { subscribeToDevice, DeviceData } from '../services/deviceService'
 import './Dashboard.css'
 
 interface DashboardProps {
@@ -45,23 +45,28 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
     setIsLoading(true)
     setError(null)
 
-    const loadDevice = async () => {
-      try {
-        const deviceData = await getDevice(deviceId)
+    // Subscribe to real-time updates for this device
+    const unsubscribe = subscribeToDevice(
+      deviceId,
+      (deviceData) => {
         if (deviceData) {
           setDevice(deviceData)
+          setError(null)
         } else {
           setError('Device not found')
         }
         setIsLoading(false)
-      } catch (err) {
+      },
+      (err: Error) => {
         console.error('Error loading device:', err)
-        setError('Failed to load device data')
+        setError('Failed to load device data. Please check your Firebase connection.')
         setIsLoading(false)
       }
-    }
+    )
 
-    loadDevice()
+    return () => {
+      unsubscribe()
+    }
   }, [deviceId])
 
   const handleBackToDevices = () => {
