@@ -452,19 +452,6 @@ const extractProfileId = (hpString: string): string => {
   return normalized
 }
 
-/**
- * Get the minimum temperature for a heater profile
- */
-const getMinTemperature = (hpId: string): number => {
-  const profileId = extractProfileId(hpId)
-  const profile = HEATER_PROFILES[profileId]
-
-  if (!profile) {
-    return 0
-  }
-
-  return Math.min(...profile.steps.map(step => step.temperature))
-}
 
 /**
  * Normalize step numbers in timeStepMap to fill gaps and detect anomalies
@@ -482,7 +469,6 @@ const normalizeStepMapping = (timeStepMap: TimeStepMapping[]): {
   const sortedMap = [...timeStepMap].sort((a, b) => a.step - b.step)
   
   // Find expected step numbers and detect gaps
-  const expectedSteps: number[] = []
   const anomalies: number[] = []
   const stepSet = new Set(sortedMap.map(m => m.step))
   
@@ -580,58 +566,6 @@ const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { s
   return { step: profile.steps.length, temp: lastStep.temperature, isAnomaly: false }
 }
 
-/**
- * Calculate heater temperature based on step count (if step mapping exists) or elapsed time
- * This function is kept for backward compatibility but prefers time-based calculation
- */
-const calculateHeaterTemp = (hpId: string, stepCount: number, elapsedSeconds: number): number => {
-  const profileId = extractProfileId(hpId)
-  const profile = HEATER_PROFILES[profileId]
-
-  if (!profile) {
-    console.warn(`Unknown heater profile: ${hpId} (extracted ID: ${profileId})`)
-    return 0
-  }
-
-  // If time-based step mapping exists, use it (preferred method)
-  if (profile.timeStepMap && profile.timeStepMap.length > 0) {
-    const { temp } = calculateStepAndTempFromTime(hpId, elapsedSeconds)
-    return temp
-  }
-
-  // If step-based temperature mapping exists, use it
-  if (profile.stepTemperatureMap && profile.stepTemperatureMap.length > 0) {
-    for (const mapping of profile.stepTemperatureMap) {
-      const [startStep, endStep] = mapping.stepRange
-      if (stepCount >= startStep && stepCount <= endStep) {
-        return mapping.temperature
-      }
-    }
-    // If step count exceeds the mapping, use the last mapping's temperature
-    const lastMapping = profile.stepTemperatureMap[profile.stepTemperatureMap.length - 1]
-    return lastMapping.temperature
-  }
-
-  // Fallback to time-based calculation if no step mapping exists
-  // Handle cycles that repeat - use modulo to get position within current cycle
-  const cyclePosition = elapsedSeconds % profile.totalDuration
-
-  // Find the step that contains this time
-  for (const step of profile.steps) {
-    if (cyclePosition >= step.startTime && cyclePosition < step.endTime) {
-      return step.temperature
-    }
-  }
-
-  // If we're at the exact end time, use the last step's temperature
-  if (cyclePosition >= profile.totalDuration) {
-    const lastStep = profile.steps[profile.steps.length - 1]
-    return lastStep.temperature
-  }
-
-  // Default to first step if somehow we don't match
-  return profile.steps[0].temperature
-}
 
 interface CSVViewerProps {
   deviceId: string
