@@ -757,6 +757,10 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
         // Track last HP per sensor to detect HP changes
         // Key: sensorId, Value: lastHpId
         const sensorLastHp: Record<string, string> = {}
+        
+        // Track last step per sensor+HP combination to detect step skips
+        // Key: `${sensorId}_${hpId}`, Value: { lastStep: number, cycleNumber: number }
+        const sensorHpStepTracker: Record<string, { lastStep: number; cycleNumber: number }> = {}
 
         // Calculate SeqNO, TotalTime, Heater_Temp, and Step
         const csvData: CSVDataRow[] = []
@@ -797,6 +801,12 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
               lastTimestamp: point.timestampTime,
               profileDuration,
             }
+            // Reset step tracker for new cycle
+            const trackerKey = `${point.sensorId}_${point.hpId}`
+            if (sensorHpStepTracker[trackerKey]) {
+              sensorHpStepTracker[trackerKey].cycleNumber++
+              sensorHpStepTracker[trackerKey].lastStep = 0 // Reset to allow step 1
+            }
           } else if (cycleInfo) {
             // Update last timestamp for existing cycle
             cycleInfo.lastTimestamp = point.timestampTime
@@ -829,8 +839,51 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           // Calculate step number and temperature based on elapsed time within cycle
           // This uses timeStepMap if available, which maps time → step → temperature
           // Handles missing step intervals by normalizing step numbers sequentially
-          const { step: stepCount, temp: heaterTemp, isAnomaly, missedStep } = calculateStepAndTempFromTime(point.hpId, elapsedInCycleSeconds)
+          const { step: stepCount, temp: heaterTemp } = calculateStepAndTempFromTime(point.hpId, elapsedInCycleSeconds)
           
+          // Detect step anomalies by tracking step sequence within each cycle
+          // Check if steps are being skipped in the actual data sequence
+          let hasAnomaly = false
+          let missedStep: number | undefined = undefined
+          
+          const trackerKey = `${point.sensorId}_${point.hpId}`
+          let tracker = sensorHpStepTracker[trackerKey]
+          
+          // Initialize tracker if it doesn't exist
+          if (!tracker) {
+            tracker = {
+              lastStep: 0, // Start at 0 so step 1 is valid
+              cycleNumber: 1
+            }
+            sensorHpStepTracker[trackerKey] = tracker
+          }
+          
+          // Reset tracker if this is a new cycle (detected earlier)
+          if (isNewCycle) {
+            tracker.lastStep = 0
+            tracker.cycleNumber++
+          }
+          
+          // Check for step skips within the current cycle
+          if (tracker.lastStep > 0) {
+            const expectedNextStep = tracker.lastStep + 1
+            
+            // If current step is greater than expected next step, steps were skipped
+            if (stepCount > expectedNextStep) {
+              hasAnomaly = true
+              // The first missed step is the one right after the last step
+              missedStep = expectedNextStep
+            } else if (stepCount < tracker.lastStep && stepCount !== 1) {
+              // Step went backwards unexpectedly (not a cycle reset)
+              // This shouldn't happen in normal operation, mark as anomaly
+              hasAnomaly = true
+              missedStep = tracker.lastStep
+            }
+          }
+          
+          // Update tracker with current step
+          tracker.lastStep = stepCount
+
           // Debug logging for step calculation issues
           if (stepCount === 1 && elapsedInCycleSeconds > 1 && csvData.length < 10) {
             console.log(`[DEBUG] HP: ${point.hpId}, elapsedInCycleSeconds: ${elapsedInCycleSeconds.toFixed(2)}, step: ${stepCount}, profileDuration: ${profileDuration}`)
@@ -859,8 +912,8 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             TotalTime: totalTimeFormatted,
             Heater_Temp: heaterTemp,
             Step: stepCount,
-            Anomaly: isAnomaly || false, // Mark if this step has an anomaly (missing step interval)
-            MissedStep: missedStep, // The step number that was missed
+            Anomaly: hasAnomaly,
+            MissedStep: missedStep,
           })
         })
 
