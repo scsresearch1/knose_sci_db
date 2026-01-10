@@ -517,7 +517,9 @@ const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { s
   }
 
   // Handle cycles that repeat - use modulo to get position within current cycle
-  const cyclePosition = elapsedSeconds % profile.totalDuration
+  // Ensure elapsedSeconds is non-negative
+  const safeElapsedSeconds = Math.max(0, elapsedSeconds)
+  const cyclePosition = safeElapsedSeconds % profile.totalDuration
 
   // If time-based step mapping exists, use it
   if (profile.timeStepMap && profile.timeStepMap.length > 0) {
@@ -537,11 +539,17 @@ const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { s
     // Find the last time point that is <= cyclePosition
     let selectedMapping = normalizedMap[0] // Default to first
     
+    // Search backwards to find the most recent time point <= cyclePosition
     for (let i = normalizedMap.length - 1; i >= 0; i--) {
       if (normalizedMap[i].time <= cyclePosition) {
         selectedMapping = normalizedMap[i]
         break
       }
+    }
+    
+    // Debug logging (can be removed in production)
+    if (cyclePosition > 0 && selectedMapping.step === 1 && normalizedMap.length > 1) {
+      console.debug(`[HP-${profileId}] elapsedSeconds: ${elapsedSeconds}, cyclePosition: ${cyclePosition}, selectedStep: ${selectedMapping.step}, time: ${selectedMapping.time}`)
     }
     
     return { 
@@ -684,6 +692,10 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
         // Track step count per sensor
         // Key: sensorId, Value: { stepCount, lastHeaterTemp, lastHpId }
         const sensorStepInfo: Record<string, { stepCount: number; lastHeaterTemp: number; lastHpId: string }> = {}
+        
+        // Track last HP per sensor to detect HP changes
+        // Key: sensorId, Value: lastHpId
+        const sensorLastHp: Record<string, string> = {}
 
         // Calculate SeqNO, TotalTime, Heater_Temp, and Step
         const csvData: CSVDataRow[] = []
@@ -707,27 +719,36 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           const cycleInfo = hpCycleInfo[hpKey]
 
           // Determine if this is a new cycle:
-          // 1. First time seeing this HP
-          // 2. HP changed from previous row
+          // 1. First time seeing this sensor+HP combination
+          // 2. HP changed for this sensor (check last HP for this sensor)
           // 3. Enough time has passed since last timestamp (gap > profile duration)
-          const isNewCycle = !cycleInfo || 
-            (csvData.length > 0 && csvData[csvData.length - 1].HP !== point.hpId) ||
-            (cycleInfo && (point.timestampTime - cycleInfo.lastTimestamp) / 1000 > profileDuration * 1.5) // 1.5x threshold to account for small gaps
+          const lastHpForSensor = sensorLastHp[point.sensorId]
+          const hpChanged = lastHpForSensor !== undefined && lastHpForSensor !== point.hpId
+          const gapTooLarge = cycleInfo && profileDuration > 0 && 
+            (point.timestampTime - cycleInfo.lastTimestamp) / 1000 > profileDuration * 1.5
+          
+          const isNewCycle = !cycleInfo || hpChanged || gapTooLarge
 
           if (isNewCycle) {
+            // Start a new cycle
             hpCycleInfo[hpKey] = {
               cycleStartTime: point.timestampTime,
               lastTimestamp: point.timestampTime,
               profileDuration,
             }
           } else if (cycleInfo) {
-            // Update last timestamp
+            // Update last timestamp for existing cycle
             cycleInfo.lastTimestamp = point.timestampTime
           }
 
           // Calculate elapsed time within current HP cycle
           const cycleStartTime = hpCycleInfo[hpKey]?.cycleStartTime || point.timestampTime
           let elapsedInCycleSeconds = (point.timestampTime - cycleStartTime) / 1000
+
+          // Ensure elapsed time is non-negative
+          if (elapsedInCycleSeconds < 0) {
+            elapsedInCycleSeconds = 0
+          }
 
           // Check if we need to reset cycle (when elapsed time >= cycle duration)
           // Reset cycle and recalculate elapsed time
@@ -748,6 +769,11 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           // This uses timeStepMap if available, which maps time → step → temperature
           // Handles missing step intervals by normalizing step numbers sequentially
           const { step: stepCount, temp: heaterTemp, isAnomaly } = calculateStepAndTempFromTime(point.hpId, elapsedInCycleSeconds)
+          
+          // Debug logging for step calculation issues
+          if (stepCount === 1 && elapsedInCycleSeconds > 1 && csvData.length < 10) {
+            console.log(`[DEBUG] HP: ${point.hpId}, elapsedInCycleSeconds: ${elapsedInCycleSeconds.toFixed(2)}, step: ${stepCount}, profileDuration: ${profileDuration}`)
+          }
 
           // Update step tracking info
           sensorStepInfo[point.sensorId] = {
@@ -755,6 +781,9 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             lastHeaterTemp: heaterTemp,
             lastHpId: point.hpId,
           }
+          
+          // Update last HP for this sensor
+          sensorLastHp[point.sensorId] = point.hpId
 
           csvData.push({
             Device_ID: deviceId,
