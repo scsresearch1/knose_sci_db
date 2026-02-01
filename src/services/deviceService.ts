@@ -150,6 +150,39 @@ interface FirebaseDeviceData {
   }
 }
 
+/**
+ * Lightweight hash for device data change detection.
+ * Avoids JSON.stringify which can cause "Maximum call stack size exceeded" on large datasets.
+ */
+const getDeviceDataHash = (deviceData: FirebaseDeviceData | null | undefined): string => {
+  if (!deviceData || typeof deviceData !== 'object') return ''
+  try {
+    const parts: string[] = []
+    const sensorIds = Object.keys(deviceData).filter(k => k.startsWith('BME')).sort()
+    for (const sensorId of sensorIds) {
+      const sensorData = deviceData[sensorId]
+      if (!sensorData || typeof sensorData !== 'object') continue
+      const hpIds = Object.keys(sensorData).filter(k => k.startsWith('Hp_') || k.startsWith('HP_'))
+      let lastTimestamp = ''
+      for (const hpId of hpIds) {
+        const hpData = sensorData[hpId]
+        if (hpData && typeof hpData === 'object') {
+          const timestamps = Object.keys(hpData)
+          if (timestamps.length > 0) {
+            const sorted = [...timestamps].sort()
+            const latest = sorted[sorted.length - 1]
+            if (latest > lastTimestamp) lastTimestamp = latest
+          }
+        }
+      }
+      parts.push(`${sensorId}:${hpIds.length}:${lastTimestamp}`)
+    }
+    return parts.join('|')
+  } catch {
+    return Date.now().toString()
+  }
+}
+
 const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): DeviceData => {
   const sensors: SensorData[] = []
   let latestTimestamp = ''
@@ -405,8 +438,8 @@ export const subscribeToDevices = (
             .map((deviceId) => {
               const deviceData = data[deviceId]
               
-              // Create a simple hash of the device data to detect changes
-              const dataHash = JSON.stringify(deviceData)
+              // Create a lightweight hash to detect changes (avoids stack overflow from JSON.stringify on large data)
+              const dataHash = getDeviceDataHash(deviceData)
               const hasNewData = deviceDataHashes[deviceId] !== dataHash
               
               // Update hash for this device
