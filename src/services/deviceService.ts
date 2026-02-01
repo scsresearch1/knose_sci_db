@@ -242,6 +242,12 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
         parseTimestamp(a.timestamp).getTime() - parseTimestamp(b.timestamp).getTime()
       )
 
+      // Limit readings to prevent stack overflow with large datasets (devices list doesn't need full history)
+      const MAX_READINGS_PER_SENSOR = 5000
+      if (sensorReadings.length > MAX_READINGS_PER_SENSOR) {
+        sensorReadings.splice(0, sensorReadings.length - MAX_READINGS_PER_SENSOR)
+      }
+
       // Get latest reading
       const latestReading = sensorReadings.length > 0 
         ? sensorReadings[sensorReadings.length - 1].data 
@@ -254,6 +260,9 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
       })
     }
   })
+
+  // Recalculate total after limiting readings per sensor
+  totalReadings = sensors.reduce((sum, s) => sum + s.readings.length, 0)
 
   // Sort sensors by ID to ensure proper grouping (BME_01, BME_02, ..., BME_16)
   sensors.sort((a, b) => {
@@ -308,15 +317,14 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
   // Collect all timestamps from all sensors, sort them, and sum the intervals
   let uptime: number | undefined = undefined
   if (sensors.length > 0) {
-    // Collect all unique timestamps from all sensors
-    const allTimestamps: string[] = []
+    // Collect all unique timestamps from all sensors (use Set for O(1) lookup, avoids stack overflow)
+    const timestampSet = new Set<string>()
     sensors.forEach(sensor => {
       sensor.readings.forEach(reading => {
-        if (reading.timestamp && !allTimestamps.includes(reading.timestamp)) {
-          allTimestamps.push(reading.timestamp)
-        }
+        if (reading.timestamp) timestampSet.add(reading.timestamp)
       })
     })
+    const allTimestamps = Array.from(timestampSet)
     
     if (allTimestamps.length > 1) {
       // Sort all timestamps chronologically
@@ -451,12 +459,16 @@ export const subscribeToDevices = (
               // This ensures status updates immediately when data is actively updating
               if (hasNewData && processedDevice.sensors.length > 0) {
                 // Check if there's any recent data (within last 5 minutes)
-                const allTimestamps = processedDevice.sensors
-                  .flatMap(s => s.readings)
-                  .map(r => parseTimestamp(r.timestamp).getTime())
+                // Use reduce instead of Math.max(...spread) to avoid stack overflow with large arrays
+                let latestTimestamp = 0
+                for (const sensor of processedDevice.sensors) {
+                  for (const r of sensor.readings) {
+                    const t = parseTimestamp(r.timestamp).getTime()
+                    if (t > latestTimestamp) latestTimestamp = t
+                  }
+                }
                 
-                if (allTimestamps.length > 0) {
-                  const latestTimestamp = Math.max(...allTimestamps)
+                if (latestTimestamp > 0) {
                   const secondsSinceLatest = (currentTime - latestTimestamp) / 1000
                   
                   // If data exists and is being updated (new data received), set to online
