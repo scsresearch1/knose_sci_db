@@ -70,6 +70,7 @@ interface CSVDataRow {
   TotalTime: string
   Heater_Temp: number
   Step: number
+  Delta_Sec?: number // Seconds since previous observation (same Sensor+HP); undefined for first obs
 }
 
 const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
@@ -96,6 +97,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
     Sensor_ID: true,
     HP: true,
     TimeStamp: true,
+    Delta_Sec: true,
     Temp: true,
     Hu: true,
     Vol: true,
@@ -236,6 +238,11 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           // Heater_Temp from HP + Step lookup table
           const heaterTemp = getHeaterTempForStep(point.hpId, stepCount)
 
+          // Delta_Sec: seconds since previous observation (same Sensor+HP)
+          const deltaSec = tracker
+            ? (point.timestampTime - tracker.lastTimestamp) / 1000
+            : undefined
+
           // Update tracker
           sensorHpStepTracker[hpKey] = {
             lastStep: stepCount,
@@ -256,6 +263,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             TotalTime: totalTimeFormatted,
             Heater_Temp: heaterTemp,
             Step: stepCount,
+            Delta_Sec: deltaSec,
           })
         })
 
@@ -405,7 +413,9 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
       const csvRow: string[] = []
       visibleHeaders.forEach(header => {
         const value = row[header as keyof CSVDataRow]
-        if (typeof value === 'number') {
+        if (header === 'Delta_Sec') {
+          csvRow.push(value !== undefined && value !== null ? Number(value).toFixed(2) : '')
+        } else if (typeof value === 'number') {
           if (header === 'Temp' || header === 'Hu' || header === 'Vol' || header === 'ADC') {
             csvRow.push(value.toFixed(3))
           } else if (header === 'Heater_Temp') {
@@ -613,6 +623,11 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                         TimeStamp {sortConfig.key === 'TimeStamp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
                     )}
+                    {visibleColumns.Delta_Sec && (
+                      <th onClick={() => handleSort('Delta_Sec')} className="sortable">
+                        Delta_Sec {sortConfig.key === 'Delta_Sec' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
                     {visibleColumns.Temp && (
                       <th onClick={() => handleSort('Temp')} className="sortable">
                         Temp {sortConfig.key === 'Temp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
@@ -669,6 +684,9 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                         {visibleColumns.Sensor_ID && <td>{row.Sensor_ID}</td>}
                         {visibleColumns.HP && <td>{row.HP}</td>}
                         {visibleColumns.TimeStamp && <td>{row.TimeStamp}</td>}
+                        {visibleColumns.Delta_Sec && (
+                          <td>{row.Delta_Sec !== undefined ? row.Delta_Sec.toFixed(2) : '—'}</td>
+                        )}
                         {visibleColumns.Temp && <td>{row.Temp.toFixed(3)}</td>}
                         {visibleColumns.Hu && <td>{row.Hu.toFixed(3)}</td>}
                         {visibleColumns.Vol && <td>{row.Vol.toFixed(3)}</td>}
