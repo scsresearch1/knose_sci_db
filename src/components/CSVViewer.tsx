@@ -4,444 +4,25 @@ import { database } from '../config/firebase'
 import { parseTimestamp, formatTimestampForDisplay } from '../services/deviceService'
 import './CSVViewer.css'
 
-// Heater Profile Step Definition
-interface HeaterProfileStep {
-  startTime: number // seconds
-  endTime: number // seconds
-  temperature: number // °C
-}
-
-// Step-to-Temperature Mapping (for step-based temperature calculation)
-interface StepTemperatureMapping {
-  stepRange: [number, number] // [startStep, endStep] inclusive
-  temperature: number // °C
-}
-
-// Time-Step Mapping (for time-based step calculation)
-interface TimeStepMapping {
-  time: number // seconds from cycle start
-  step: number // step number at this time
-  temp: number // temperature at this step
-}
-
-// Heater Profile Configuration
-interface HeaterProfile {
-  id: string
-  totalDuration: number // seconds (cycle duration)
-  steps: HeaterProfileStep[]
-  stepTemperatureMap?: StepTemperatureMapping[] // Optional step-based temperature mapping
-  timeStepMap?: TimeStepMapping[] // Optional time-based step mapping
-}
-
-// Heater Profile Definitions
-const HEATER_PROFILES: Record<string, HeaterProfile> = {
-  '001': {
-    id: '001',
-    totalDuration: 600.6,
-    steps: [{ startTime: 0, endTime: 600.6, temperature: 320 }],
-  },
-  '301': {
-    id: '301',
-    totalDuration: 18, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 6, temperature: 100 },
-      { startTime: 6, endTime: 12, temperature: 200 },
-      { startTime: 12, endTime: 18.34, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-301
-    // Maps elapsed time within cycle to step number and temperature
-    timeStepMap: [
-      { time: 0, step: 1, temp: 100 },
-      { time: 6, step: 2, temp: 100 },
-      { time: 7, step: 3, temp: 200 },
-      { time: 9, step: 4, temp: 200 },
-      { time: 11, step: 5, temp: 200 },
-      { time: 12, step: 6, temp: 200 },
-      { time: 13, step: 7, temp: 320 },
-      { time: 15, step: 8, temp: 320 },
-      { time: 17, step: 9, temp: 320 },
-      { time: 18, step: 10, temp: 320 },
-    ],
-  },
-  '321': {
-    id: '321',
-    totalDuration: 18, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 6, temperature: 100 },
-      { startTime: 6, endTime: 6, temperature: 325 }, // spike
-      { startTime: 6, endTime: 12, temperature: 200 },
-      { startTime: 12, endTime: 18.9, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-321
-    timeStepMap: [
-      { time: 0, step: 1, temp: 100 },
-      { time: 6, step: 2, temp: 100 },
-      { time: 6.5, step: 3, temp: 320 },
-      { time: 6.8, step: 4, temp: 320 },
-      { time: 7.2, step: 5, temp: 200 },
-      { time: 10, step: 6, temp: 200 },
-      { time: 13, step: 7, temp: 200 },
-      { time: 14, step: 8, temp: 320 },
-      { time: 16, step: 9, temp: 320 },
-      { time: 17.5, step: 10, temp: 320 },
-      { time: 18, step: 11, temp: 320 },
-    ],
-  },
-  '322': {
-    id: '322',
-    totalDuration: 26, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 9, temperature: 100 },
-      { startTime: 9, endTime: 9, temperature: 325 }, // spike
-      { startTime: 9, endTime: 18, temperature: 200 },
-      { startTime: 18, endTime: 27.44, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-322
-    timeStepMap: [
-      { time: 0, step: 1, temp: 100 },
-      { time: 9, step: 2, temp: 100 },
-      { time: 9.5, step: 3, temp: 320 },
-      { time: 9.8, step: 4, temp: 320 },
-      { time: 10.2, step: 5, temp: 200 },
-      { time: 14, step: 6, temp: 200 },
-      { time: 18, step: 7, temp: 200 },
-      { time: 19, step: 8, temp: 320 },
-      { time: 22, step: 9, temp: 320 },
-      { time: 25, step: 10, temp: 320 },
-      { time: 26, step: 11, temp: 320 },
-    ],
-  },
-  '323': {
-    id: '323',
-    totalDuration: 18, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 6, temperature: 75 },
-      { startTime: 6, endTime: 6, temperature: 350 }, // spike
-      { startTime: 6, endTime: 12, temperature: 200 },
-      { startTime: 12, endTime: 18.9, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-323
-    timeStepMap: [
-      { time: 0, step: 1, temp: 70 },
-      { time: 6, step: 2, temp: 70 },
-      { time: 6.3, step: 3, temp: 350 },
-      { time: 6.6, step: 4, temp: 350 },
-      { time: 7, step: 5, temp: 210 },
-      { time: 10, step: 6, temp: 210 },
-      { time: 13, step: 7, temp: 210 },
-      { time: 14, step: 8, temp: 350 },
-      { time: 16, step: 9, temp: 350 },
-      { time: 17.5, step: 10, temp: 350 },
-      { time: 18, step: 11, temp: 350 },
-    ],
-  },
-  '324': {
-    id: '324',
-    totalDuration: 26, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 9, temperature: 75 },
-      { startTime: 9, endTime: 9, temperature: 350 }, // spike
-      { startTime: 9, endTime: 18, temperature: 200 },
-      { startTime: 18, endTime: 27.44, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-324
-    timeStepMap: [
-      { time: 0, step: 1, temp: 70 },
-      { time: 9, step: 2, temp: 70 },
-      { time: 9.3, step: 3, temp: 350 },
-      { time: 9.7, step: 4, temp: 350 },
-      { time: 10.1, step: 5, temp: 210 },
-      { time: 14, step: 6, temp: 210 },
-      { time: 18, step: 7, temp: 210 },
-      { time: 19, step: 8, temp: 350 },
-      { time: 22, step: 9, temp: 350 },
-      { time: 25, step: 10, temp: 350 },
-      { time: 26, step: 11, temp: 350 },
-    ],
-  },
-  '331': {
-    id: '331',
-    totalDuration: 75, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 20, temperature: 50 },
-      { startTime: 20, endTime: 40, temperature: 350 },
-      { startTime: 40, endTime: 60, temperature: 125 },
-      { startTime: 60, endTime: 78.4, temperature: 350 },
-    ],
-    // Time-based step mapping for HP-331
-    timeStepMap: [
-      { time: 0, step: 1, temp: 50 },
-      { time: 10, step: 2, temp: 50 },
-      { time: 20, step: 3, temp: 50 },
-      { time: 20.5, step: 4, temp: 350 },
-      { time: 40, step: 5, temp: 350 },
-      { time: 50, step: 6, temp: 140 },
-      { time: 60, step: 7, temp: 140 },
-      { time: 60.5, step: 8, temp: 350 },
-      { time: 75, step: 9, temp: 350 },
-    ],
-  },
-  '332': {
-    id: '332',
-    totalDuration: 110, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 20, temperature: 50 },
-      { startTime: 20, endTime: 60, temperature: 350 },
-      { startTime: 60, endTime: 80, temperature: 125 },
-      { startTime: 80, endTime: 112, temperature: 350 },
-    ],
-    // Time-based step mapping for HP-332
-    timeStepMap: [
-      { time: 0, step: 1, temp: 50 },
-      { time: 15, step: 2, temp: 50 },
-      { time: 30, step: 3, temp: 50 },
-      { time: 30.5, step: 4, temp: 350 },
-      { time: 60, step: 5, temp: 350 },
-      { time: 70, step: 6, temp: 140 },
-      { time: 85, step: 7, temp: 140 },
-      { time: 85.5, step: 8, temp: 350 },
-      { time: 110, step: 9, temp: 350 },
-    ],
-  },
-  '354': {
-    id: '354',
-    totalDuration: 10, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 2, temperature: 325 },
-      { startTime: 2, endTime: 6, temperature: 100 },
-      { startTime: 6, endTime: 8, temperature: 200 },
-      { startTime: 8, endTime: 10.78, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-354
-    timeStepMap: [
-      { time: 0, step: 1, temp: 320 },
-      { time: 1, step: 2, temp: 320 },
-      { time: 1.5, step: 3, temp: 100 },
-      { time: 3, step: 4, temp: 100 },
-      { time: 6.5, step: 5, temp: 100 },
-      { time: 7, step: 6, temp: 200 },
-      { time: 8, step: 7, temp: 200 },
-      { time: 9, step: 8, temp: 320 },
-      { time: 9.5, step: 9, temp: 320 },
-      { time: 10, step: 10, temp: 320 },
-    ],
-  },
-  '411': {
-    id: '411',
-    totalDuration: 23, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 5, temperature: 100 },
-      { startTime: 5, endTime: 8, temperature: 325 },
-      { startTime: 8, endTime: 12, temperature: 150 },
-      { startTime: 12, endTime: 15, temperature: 325 },
-      { startTime: 15, endTime: 20, temperature: 200 },
-      { startTime: 20, endTime: 24.64, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-411
-    timeStepMap: [
-      { time: 0, step: 1, temp: 100 },
-      { time: 6, step: 2, temp: 100 },
-      { time: 6.3, step: 3, temp: 320 },
-      { time: 6.8, step: 4, temp: 170 },
-      { time: 13, step: 5, temp: 170 },
-      { time: 13.3, step: 6, temp: 320 },
-      { time: 14, step: 7, temp: 240 },
-      { time: 18, step: 8, temp: 240 },
-      { time: 19, step: 9, temp: 320 },
-      { time: 21, step: 10, temp: 320 },
-      { time: 23, step: 11, temp: 320 },
-    ],
-  },
-  '412': {
-    id: '412',
-    totalDuration: 36, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 8, temperature: 100 },
-      { startTime: 8, endTime: 12, temperature: 325 },
-      { startTime: 12, endTime: 20, temperature: 150 },
-      { startTime: 20, endTime: 24, temperature: 325 },
-      { startTime: 24, endTime: 30, temperature: 200 },
-      { startTime: 30, endTime: 36.68, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-412
-    timeStepMap: [
-      { time: 0, step: 1, temp: 100 },
-      { time: 9, step: 2, temp: 100 },
-      { time: 9.3, step: 3, temp: 320 },
-      { time: 9.8, step: 4, temp: 170 },
-      { time: 18, step: 5, temp: 170 },
-      { time: 18.3, step: 6, temp: 320 },
-      { time: 19, step: 7, temp: 240 },
-      { time: 23, step: 8, temp: 240 },
-      { time: 27, step: 9, temp: 240 },
-      { time: 28, step: 10, temp: 320 },
-      { time: 32, step: 11, temp: 320 },
-      { time: 36, step: 12, temp: 320 },
-    ],
-  },
-  '413': {
-    id: '413',
-    totalDuration: 23, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 5, temperature: 75 },
-      { startTime: 5, endTime: 8, temperature: 350 },
-      { startTime: 8, endTime: 12, temperature: 150 },
-      { startTime: 12, endTime: 16, temperature: 325 },
-      { startTime: 16, endTime: 20, temperature: 200 },
-      { startTime: 20, endTime: 24.64, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-413
-    timeStepMap: [
-      { time: 0, step: 1, temp: 70 },
-      { time: 6, step: 2, temp: 70 },
-      { time: 6.3, step: 3, temp: 350 },
-      { time: 6.8, step: 4, temp: 160 },
-      { time: 13, step: 5, temp: 160 },
-      { time: 13.3, step: 6, temp: 350 },
-      { time: 14, step: 7, temp: 255 },
-      { time: 18, step: 8, temp: 255 },
-      { time: 19, step: 9, temp: 350 },
-      { time: 21, step: 10, temp: 350 },
-      { time: 23, step: 11, temp: 350 },
-    ],
-  },
-  '414': {
-    id: '414',
-    totalDuration: 36, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 8, temperature: 75 },
-      { startTime: 8, endTime: 12, temperature: 350 },
-      { startTime: 12, endTime: 20, temperature: 150 },
-      { startTime: 20, endTime: 24, temperature: 325 },
-      { startTime: 24, endTime: 30, temperature: 200 },
-      { startTime: 30, endTime: 36.68, temperature: 325 },
-    ],
-    // Time-based step mapping for HP-414
-    timeStepMap: [
-      { time: 0, step: 1, temp: 70 },
-      { time: 9, step: 2, temp: 70 },
-      { time: 9.3, step: 3, temp: 350 },
-      { time: 9.7, step: 4, temp: 160 },
-      { time: 18, step: 5, temp: 160 },
-      { time: 18.5, step: 6, temp: 350 },
-      { time: 19, step: 7, temp: 255 },
-      { time: 23, step: 8, temp: 255 },
-      { time: 28, step: 9, temp: 255 },
-      { time: 29, step: 10, temp: 350 },
-      { time: 32, step: 11, temp: 350 },
-      { time: 36, step: 12, temp: 350 },
-    ],
-  },
-  '501': {
-    id: '501',
-    totalDuration: 26, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 3, temperature: 200 },
-      { startTime: 3, endTime: 6, temperature: 260 },
-      { startTime: 6, endTime: 9, temperature: 320 },
-      { startTime: 9, endTime: 12, temperature: 260 },
-      { startTime: 12, endTime: 15, temperature: 200 },
-      { startTime: 15, endTime: 20, temperature: 150 },
-      { startTime: 20, endTime: 23, temperature: 100 },
-      { startTime: 23, endTime: 26.88, temperature: 150 },
-    ],
-    // Time-based step mapping for HP-501
-    timeStepMap: [
-      { time: 0, step: 1, temp: 210 },
-      { time: 4, step: 2, temp: 210 },
-      { time: 4.5, step: 3, temp: 260 },
-      { time: 7, step: 4, temp: 260 },
-      { time: 7.5, step: 5, temp: 320 },
-      { time: 10, step: 6, temp: 320 },
-      { time: 14, step: 7, temp: 260 },
-      { time: 18, step: 8, temp: 210 },
-      { time: 21, step: 9, temp: 150 },
-      { time: 24, step: 10, temp: 100 },
-      { time: 26, step: 11, temp: 150 },
-    ],
-  },
-  '502': {
-    id: '502',
-    totalDuration: 35, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 5, temperature: 200 },
-      { startTime: 5, endTime: 10, temperature: 260 },
-      { startTime: 10, endTime: 15, temperature: 320 },
-      { startTime: 15, endTime: 20, temperature: 260 },
-      { startTime: 20, endTime: 25, temperature: 200 },
-      { startTime: 25, endTime: 30, temperature: 150 },
-      { startTime: 30, endTime: 35.84, temperature: 125 }, // 100-150°C average
-    ],
-    // Time-based step mapping for HP-502
-    timeStepMap: [
-      { time: 0, step: 1, temp: 210 },
-      { time: 5, step: 2, temp: 210 },
-      { time: 5.5, step: 3, temp: 260 },
-      { time: 9, step: 4, temp: 260 },
-      { time: 9.5, step: 5, temp: 320 },
-      { time: 13, step: 6, temp: 320 },
-      { time: 17, step: 7, temp: 260 },
-      { time: 22, step: 8, temp: 210 },
-      { time: 27, step: 9, temp: 150 },
-      { time: 31, step: 10, temp: 100 },
-      { time: 35, step: 11, temp: 150 },
-    ],
-  },
-  '503': {
-    id: '503',
-    totalDuration: 26, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 3, temperature: 200 },
-      { startTime: 3, endTime: 6, temperature: 275 },
-      { startTime: 6, endTime: 9, temperature: 350 },
-      { startTime: 9, endTime: 12, temperature: 275 },
-      { startTime: 12, endTime: 16, temperature: 200 },
-      { startTime: 16, endTime: 20, temperature: 150 },
-      { startTime: 20, endTime: 23, temperature: 100 },
-      { startTime: 23, endTime: 26.88, temperature: 150 },
-    ],
-    // Time-based step mapping for HP-503
-    timeStepMap: [
-      { time: 0, step: 1, temp: 210 },
-      { time: 4, step: 2, temp: 210 },
-      { time: 4.5, step: 3, temp: 280 },
-      { time: 7, step: 4, temp: 280 },
-      { time: 7.5, step: 5, temp: 350 },
-      { time: 10, step: 6, temp: 350 },
-      { time: 13, step: 7, temp: 280 },
-      { time: 17, step: 8, temp: 210 },
-      { time: 21, step: 9, temp: 140 },
-      { time: 24, step: 10, temp: 70 },
-      { time: 26, step: 11, temp: 140 },
-    ],
-  },
-  '504': {
-    id: '504',
-    totalDuration: 35, // Cycle duration in seconds
-    steps: [
-      { startTime: 0, endTime: 5, temperature: 200 },
-      { startTime: 5, endTime: 10, temperature: 275 },
-      { startTime: 10, endTime: 15, temperature: 350 },
-      { startTime: 15, endTime: 20, temperature: 275 },
-      { startTime: 20, endTime: 25, temperature: 200 },
-      { startTime: 25, endTime: 30, temperature: 150 },
-      { startTime: 30, endTime: 35.84, temperature: 125 }, // 100-150°C average
-    ],
-    // Time-based step mapping for HP-504
-    timeStepMap: [
-      { time: 0, step: 1, temp: 210 },
-      { time: 5, step: 2, temp: 210 },
-      { time: 5.5, step: 3, temp: 280 },
-      { time: 9, step: 4, temp: 280 },
-      { time: 9.5, step: 5, temp: 350 },
-      { time: 13, step: 6, temp: 350 },
-      { time: 17, step: 7, temp: 280 },
-      { time: 21, step: 8, temp: 210 },
-      { time: 25, step: 9, temp: 140 },
-      { time: 30, step: 10, temp: 70 },
-      { time: 35, step: 11, temp: 140 },
-    ],
-  },
+// HP + Step → Temperature lookup (from user-provided specification)
+// All profiles have 10 steps; cycle wraps 1→2→...→10→1
+const HP_STEP_TEMPERATURE_MAP: Record<string, Record<number, number>> = {
+  '301': { 1: 100, 2: 100, 3: 200, 4: 200, 5: 200, 6: 200, 7: 320, 8: 320, 9: 320, 10: 320 },
+  '321': { 1: 100, 2: 320, 3: 320, 4: 200, 5: 200, 6: 200, 7: 320, 8: 320, 9: 320, 10: 320 },
+  '322': { 1: 100, 2: 320, 3: 320, 4: 200, 5: 200, 6: 200, 7: 320, 8: 320, 9: 320, 10: 320 },
+  '323': { 1: 70, 2: 350, 3: 350, 4: 210, 5: 210, 6: 210, 7: 350, 8: 350, 9: 350, 10: 350 },
+  '324': { 1: 70, 2: 350, 3: 350, 4: 210, 5: 210, 6: 210, 7: 350, 8: 350, 9: 350, 10: 350 },
+  '331': { 1: 50, 2: 50, 3: 350, 4: 350, 5: 350, 6: 140, 7: 140, 8: 350, 9: 350, 10: 350 },
+  '332': { 1: 50, 2: 50, 3: 350, 4: 350, 5: 350, 6: 140, 7: 140, 8: 350, 9: 350, 10: 350 },
+  '354': { 1: 320, 2: 100, 3: 100, 4: 100, 5: 200, 6: 200, 7: 200, 8: 320, 9: 320, 10: 320 },
+  '411': { 1: 100, 2: 320, 3: 170, 4: 320, 5: 240, 6: 240, 7: 240, 8: 320, 9: 320, 10: 320 },
+  '412': { 1: 100, 2: 320, 3: 170, 4: 320, 5: 240, 6: 240, 7: 240, 8: 320, 9: 320, 10: 320 },
+  '413': { 1: 70, 2: 350, 3: 163, 4: 350, 5: 256, 6: 256, 7: 256, 8: 350, 9: 350, 10: 350 },
+  '414': { 1: 70, 2: 350, 3: 163, 4: 350, 5: 256, 6: 256, 7: 256, 8: 350, 9: 350, 10: 350 },
+  '501': { 1: 210, 2: 265, 3: 265, 4: 320, 5: 320, 6: 265, 7: 210, 8: 155, 9: 100, 10: 155 },
+  '502': { 1: 210, 2: 265, 3: 265, 4: 320, 5: 320, 6: 265, 7: 210, 8: 155, 9: 100, 10: 155 },
+  '503': { 1: 210, 2: 280, 3: 280, 4: 350, 5: 350, 6: 280, 7: 210, 8: 140, 9: 70, 10: 140 },
+  '504': { 1: 210, 2: 280, 3: 280, 4: 350, 5: 350, 6: 280, 7: 210, 8: 140, 9: 70, 10: 140 },
 }
 
 /**
@@ -453,155 +34,22 @@ const extractProfileId = (hpString: string): string => {
 }
 
 
-/**
- * Normalize step numbers in timeStepMap to fill gaps and detect anomalies
- * Returns normalized mapping and list of missing steps (anomalies)
- */
-const normalizeStepMapping = (timeStepMap: TimeStepMapping[]): {
-  normalizedMap: Array<{ time: number; step: number; temp: number; originalStep: number; isAnomaly: boolean }>
-  anomalies: number[] // List of missing step numbers
-} => {
-  if (!timeStepMap || timeStepMap.length === 0) {
-    return { normalizedMap: [], anomalies: [] }
-  }
+/** Gap threshold in seconds - reset step to 1 after this gap */
+const STEP_RESET_GAP_SECONDS = 3600 // 1 hour
 
-  // Sort by step number
-  const sortedMap = [...timeStepMap].sort((a, b) => a.step - b.step)
-  
-  // Find expected step numbers and detect gaps
-  const anomalies: number[] = []
-  const stepSet = new Set(sortedMap.map(m => m.step))
-  
-  if (sortedMap.length > 0) {
-    const minStep = sortedMap[0].step
-    const maxStep = sortedMap[sortedMap.length - 1].step
-    
-    // Check for gaps in step sequence
-    for (let stepNum = minStep; stepNum <= maxStep; stepNum++) {
-      if (!stepSet.has(stepNum)) {
-        anomalies.push(stepNum)
-      }
-    }
-  }
-
-  // Create normalized mapping with sequential step numbers (1, 2, 3, ...)
-  const normalizedMap = sortedMap.map((mapping, index) => ({
-    time: mapping.time,
-    step: index + 1, // Sequential step number (1, 2, 3, ...)
-    temp: mapping.temp,
-    originalStep: mapping.step, // Keep original step number for reference
-    isAnomaly: anomalies.includes(mapping.step), // Mark if this step follows a gap
-  }))
-
-  return { normalizedMap, anomalies }
-}
-
-// Cache for normalized mappings per HP profile
-const normalizedMappingCache: Record<string, {
-  normalizedMap: Array<{ time: number; step: number; temp: number; originalStep: number; isAnomaly: boolean }>
-  anomalies: number[]
-}> = {}
+/** Max steps per HP cycle - all profiles have 10 steps */
+const MAX_STEPS = 10
 
 /**
- * Calculate step number and temperature based on elapsed time within cycle
- * Uses timeStepMap if available, otherwise falls back to time-based calculation
- * Handles missing step intervals by normalizing step numbers sequentially
+ * Get Heater_Temp from HP + Step lookup table
  */
-const calculateStepAndTempFromTime = (hpId: string, elapsedSeconds: number): { step: number; temp: number; isAnomaly?: boolean; missedStep?: number } => {
+const getHeaterTempForStep = (hpId: string, step: number): number => {
   const profileId = extractProfileId(hpId)
-  const profile = HEATER_PROFILES[profileId]
-
-  if (!profile) {
-    console.warn(`Unknown heater profile: ${hpId} (extracted ID: ${profileId})`)
-    return { step: 1, temp: 0, isAnomaly: false }
-  }
-
-  // Handle cycles that repeat - use modulo to get position within current cycle
-  // Ensure elapsedSeconds is non-negative
-  const safeElapsedSeconds = Math.max(0, elapsedSeconds)
-  const cyclePosition = safeElapsedSeconds % profile.totalDuration
-
-  // If time-based step mapping exists, use it
-  if (profile.timeStepMap && profile.timeStepMap.length > 0) {
-    // Get or create normalized mapping (with anomaly detection)
-    if (!normalizedMappingCache[profileId]) {
-      normalizedMappingCache[profileId] = normalizeStepMapping(profile.timeStepMap)
-      
-      // Log anomalies if detected
-      if (normalizedMappingCache[profileId].anomalies.length > 0) {
-        console.warn(`[HP-${profileId}] Anomaly detected: Missing step numbers: ${normalizedMappingCache[profileId].anomalies.join(', ')}`)
-      }
-    }
-
-    const { normalizedMap, anomalies } = normalizedMappingCache[profileId]
-    
-    // Find the appropriate step based on elapsed time
-    // Find the last time point that is <= cyclePosition
-    let selectedMapping = normalizedMap[0] // Default to first
-    let selectedIndex = 0
-    
-    // Search backwards to find the most recent time point <= cyclePosition
-    for (let i = normalizedMap.length - 1; i >= 0; i--) {
-      if (normalizedMap[i].time <= cyclePosition) {
-        selectedMapping = normalizedMap[i]
-        selectedIndex = i
-        break
-      }
-    }
-    
-    // Check if the previous step was missed
-    // The isAnomaly flag indicates that a step before this one was missed
-    let missedStep: number | undefined = undefined
-    if (selectedMapping.isAnomaly && anomalies.length > 0) {
-      const currentOriginalStep = selectedMapping.originalStep
-      
-      // Find the most recent missed step before the current step
-      // Get all anomalies that are less than the current original step
-      const relevantAnomalies = anomalies.filter(a => a < currentOriginalStep)
-      
-      if (relevantAnomalies.length > 0) {
-        // Get the most recent missed step (highest value that's still less than current)
-        missedStep = Math.max(...relevantAnomalies)
-      } else if (selectedIndex > 0) {
-        // Fallback: check gap between current and previous step
-        const previousMapping = normalizedMap[selectedIndex - 1]
-        const previousOriginalStep = previousMapping.originalStep
-        
-        // If there's a gap, the missed step is right before current
-        if (currentOriginalStep - previousOriginalStep > 1) {
-          missedStep = currentOriginalStep - 1
-        }
-      }
-    }
-    
-    // Debug logging (can be removed in production)
-    if (cyclePosition > 0 && selectedMapping.step === 1 && normalizedMap.length > 1) {
-      console.debug(`[HP-${profileId}] elapsedSeconds: ${elapsedSeconds}, cyclePosition: ${cyclePosition}, selectedStep: ${selectedMapping.step}, time: ${selectedMapping.time}`)
-    }
-    
-    return { 
-      step: selectedMapping.step, // Use normalized sequential step number
-      temp: selectedMapping.temp,
-      isAnomaly: selectedMapping.isAnomaly,
-      missedStep: missedStep
-    }
-  }
-
-  // Fallback: calculate step based on time ranges in steps array
-  let stepNumber = 1
-  for (let i = 0; i < profile.steps.length; i++) {
-    const step = profile.steps[i]
-    if (cyclePosition >= step.startTime && cyclePosition < step.endTime) {
-      stepNumber = i + 1
-      return { step: stepNumber, temp: step.temperature, isAnomaly: false }
-    }
-  }
-
-  // If at or beyond cycle end, use last step
-  const lastStep = profile.steps[profile.steps.length - 1]
-  return { step: profile.steps.length, temp: lastStep.temperature, isAnomaly: false }
+  const stepTemps = HP_STEP_TEMPERATURE_MAP[profileId]
+  if (!stepTemps) return 0
+  const temp = stepTemps[step]
+  return temp ?? 0
 }
-
 
 interface CSVViewerProps {
   deviceId: string
@@ -622,8 +70,6 @@ interface CSVDataRow {
   TotalTime: string
   Heater_Temp: number
   Step: number
-  Anomaly?: boolean // Flag indicating if this step has an anomaly (missing step interval)
-  MissedStep?: number // The step number that was missed before this step
 }
 
 const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
@@ -640,7 +86,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
   const [selectedSensor, setSelectedSensor] = useState<string>('')
   const [selectedHP, setSelectedHP] = useState<string>('')
   const [selectedStep, setSelectedStep] = useState<string>('')
-  const [anomalyFilter, setAnomalyFilter] = useState<string>('all') // 'all', 'yes', 'no'
   
   // Sorting state
   const [sortConfig, setSortConfig] = useState<{ key: keyof CSVDataRow | null; direction: 'asc' | 'desc' }>({ key: null, direction: 'asc' })
@@ -659,7 +104,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
     TotalTime: true,
     Heater_Temp: true,
     Step: true,
-    Anomaly: true,
   })
   
   // Pagination
@@ -746,23 +190,14 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           setSelectedDate((prev) => prev || dates[0])
         }
 
-        // Track cycle information for each HP profile
-        // Key: `${sensorId}_${hpId}`, Value: { cycleStartTime, lastTimestamp, profileDuration }
-        const hpCycleInfo: Record<string, { cycleStartTime: number; lastTimestamp: number; profileDuration: number }> = {}
-
-        // Track step count per sensor
-        // Key: sensorId, Value: { stepCount, lastHeaterTemp, lastHpId }
-        const sensorStepInfo: Record<string, { stepCount: number; lastHeaterTemp: number; lastHpId: string }> = {}
+        // Track last step and last timestamp per sensor+HP for sequential step logic
+        // Key: `${sensorId}_${hpId}`, Value: { lastStep: number, lastTimestamp: number }
+        const sensorHpStepTracker: Record<string, { lastStep: number; lastTimestamp: number }> = {}
         
-        // Track last HP per sensor to detect HP changes
-        // Key: sensorId, Value: lastHpId
+        // Track last HP per sensor to detect HP changes (reset step to 1)
         const sensorLastHp: Record<string, string> = {}
-        
-        // Track last step per sensor+HP combination to detect step skips
-        // Key: `${sensorId}_${hpId}`, Value: { lastStep: number, cycleNumber: number }
-        const sensorHpStepTracker: Record<string, { lastStep: number; cycleNumber: number }> = {}
 
-        // Calculate SeqNO, TotalTime, Heater_Temp, and Step
+        // Calculate SeqNO, TotalTime, Step, Heater_Temp (Anomaly ignored)
         const csvData: CSVDataRow[] = []
         let seqNo = 1
         let firstTimestamp: number | null = null
@@ -775,128 +210,37 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           const totalTimeSeconds = (point.timestampTime - firstTimestamp) / 1000
           const totalTimeFormatted = formatTotalTime(totalTimeSeconds)
 
-          // Get profile duration for cycle detection
-          const profileId = extractProfileId(point.hpId)
-          const profile = HEATER_PROFILES[profileId]
-          const profileDuration = profile ? profile.totalDuration : 0
-
           const hpKey = `${point.sensorId}_${point.hpId}`
-          const cycleInfo = hpCycleInfo[hpKey]
-
-          // Determine if this is a new cycle:
-          // 1. First time seeing this sensor+HP combination
-          // 2. HP changed for this sensor (check last HP for this sensor)
-          // 3. Enough time has passed since last timestamp (gap > profile duration)
+          const tracker = sensorHpStepTracker[hpKey]
           const lastHpForSensor = sensorLastHp[point.sensorId]
+
+          // Determine if step should reset to 1:
+          // 1. First observation for this sensor+HP
+          // 2. HP changed for this sensor
+          // 3. Gap > 1 hour since last observation
+          const isFirstObs = !tracker
           const hpChanged = lastHpForSensor !== undefined && lastHpForSensor !== point.hpId
-          const gapTooLarge = cycleInfo && profileDuration > 0 && 
-            (point.timestampTime - cycleInfo.lastTimestamp) / 1000 > profileDuration * 1.5
-          
-          const isNewCycle = !cycleInfo || hpChanged || gapTooLarge
+          const gapTooLarge = tracker && (point.timestampTime - tracker.lastTimestamp) / 1000 > STEP_RESET_GAP_SECONDS
 
-          if (isNewCycle) {
-            // Start a new cycle
-            hpCycleInfo[hpKey] = {
-              cycleStartTime: point.timestampTime,
-              lastTimestamp: point.timestampTime,
-              profileDuration,
-            }
-            // Reset step tracker for new cycle
-            const trackerKey = `${point.sensorId}_${point.hpId}`
-            if (sensorHpStepTracker[trackerKey]) {
-              sensorHpStepTracker[trackerKey].cycleNumber++
-              sensorHpStepTracker[trackerKey].lastStep = 0 // Reset to allow step 1
-            }
-          } else if (cycleInfo) {
-            // Update last timestamp for existing cycle
-            cycleInfo.lastTimestamp = point.timestampTime
+          const shouldResetStep = isFirstObs || hpChanged || gapTooLarge
+
+          // Calculate Step: sequential 1-10, wraps after 10
+          let stepCount: number
+          if (shouldResetStep) {
+            stepCount = 1
+          } else {
+            // Next step in cycle: 1→2→...→10→1
+            stepCount = (tracker!.lastStep % MAX_STEPS) + 1
           }
 
-          // Calculate elapsed time within current HP cycle
-          const cycleStartTime = hpCycleInfo[hpKey]?.cycleStartTime || point.timestampTime
-          let elapsedInCycleSeconds = (point.timestampTime - cycleStartTime) / 1000
+          // Heater_Temp from HP + Step lookup table
+          const heaterTemp = getHeaterTempForStep(point.hpId, stepCount)
 
-          // Ensure elapsed time is non-negative
-          if (elapsedInCycleSeconds < 0) {
-            elapsedInCycleSeconds = 0
+          // Update tracker
+          sensorHpStepTracker[hpKey] = {
+            lastStep: stepCount,
+            lastTimestamp: point.timestampTime,
           }
-
-          // Check if we need to reset cycle (when elapsed time >= cycle duration)
-          // Reset cycle and recalculate elapsed time
-          if (elapsedInCycleSeconds >= profileDuration && profileDuration > 0) {
-            // Reset cycle - start a new cycle
-            const cyclesCompleted = Math.floor(elapsedInCycleSeconds / profileDuration)
-            elapsedInCycleSeconds = elapsedInCycleSeconds % profileDuration
-            
-            // Update cycle start time to reflect the new cycle
-            hpCycleInfo[hpKey] = {
-              cycleStartTime: cycleStartTime + (cyclesCompleted * profileDuration * 1000),
-              lastTimestamp: point.timestampTime,
-              profileDuration,
-            }
-          }
-
-          // Calculate step number and temperature based on elapsed time within cycle
-          // This uses timeStepMap if available, which maps time → step → temperature
-          // Handles missing step intervals by normalizing step numbers sequentially
-          const { step: stepCount, temp: heaterTemp } = calculateStepAndTempFromTime(point.hpId, elapsedInCycleSeconds)
-          
-          // Detect step anomalies by tracking step sequence within each cycle
-          // Check if steps are being skipped in the actual data sequence
-          let hasAnomaly = false
-          let missedStep: number | undefined = undefined
-          
-          const trackerKey = `${point.sensorId}_${point.hpId}`
-          let tracker = sensorHpStepTracker[trackerKey]
-          
-          // Initialize tracker if it doesn't exist
-          if (!tracker) {
-            tracker = {
-              lastStep: 0, // Start at 0 so step 1 is valid
-              cycleNumber: 1
-            }
-            sensorHpStepTracker[trackerKey] = tracker
-          }
-          
-          // Reset tracker if this is a new cycle (detected earlier)
-          if (isNewCycle) {
-            tracker.lastStep = 0
-            tracker.cycleNumber++
-          }
-          
-          // Check for step skips within the current cycle
-          if (tracker.lastStep > 0) {
-            const expectedNextStep = tracker.lastStep + 1
-            
-            // If current step is greater than expected next step, steps were skipped
-            if (stepCount > expectedNextStep) {
-              hasAnomaly = true
-              // The first missed step is the one right after the last step
-              missedStep = expectedNextStep
-            } else if (stepCount < tracker.lastStep && stepCount !== 1) {
-              // Step went backwards unexpectedly (not a cycle reset)
-              // This shouldn't happen in normal operation, mark as anomaly
-              hasAnomaly = true
-              missedStep = tracker.lastStep
-            }
-          }
-          
-          // Update tracker with current step
-          tracker.lastStep = stepCount
-
-          // Debug logging for step calculation issues
-          if (stepCount === 1 && elapsedInCycleSeconds > 1 && csvData.length < 10) {
-            console.log(`[DEBUG] HP: ${point.hpId}, elapsedInCycleSeconds: ${elapsedInCycleSeconds.toFixed(2)}, step: ${stepCount}, profileDuration: ${profileDuration}`)
-          }
-
-          // Update step tracking info
-          sensorStepInfo[point.sensorId] = {
-            stepCount,
-            lastHeaterTemp: heaterTemp,
-            lastHpId: point.hpId,
-          }
-          
-          // Update last HP for this sensor
           sensorLastHp[point.sensorId] = point.hpId
 
           csvData.push({
@@ -912,8 +256,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             TotalTime: totalTimeFormatted,
             Heater_Temp: heaterTemp,
             Step: stepCount,
-            Anomaly: hasAnomaly,
-            MissedStep: missedStep,
           })
         })
 
@@ -969,13 +311,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
       filtered = filtered.filter(row => row.Step.toString() === selectedStep)
     }
 
-    // Anomaly filter
-    if (anomalyFilter === 'yes') {
-      filtered = filtered.filter(row => row.Anomaly === true)
-    } else if (anomalyFilter === 'no') {
-      filtered = filtered.filter(row => row.Anomaly === false)
-    }
-
     // Search filter
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
@@ -1012,7 +347,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
 
     setFilteredData(filtered)
     setCurrentPage(1) // Reset to first page when filters change
-  }, [selectedDate, allData, selectedSensor, selectedHP, selectedStep, anomalyFilter, searchQuery, sortConfig])
+  }, [selectedDate, allData, selectedSensor, selectedHP, selectedStep, searchQuery, sortConfig])
 
   // Pagination
   useEffect(() => {
@@ -1077,12 +412,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             csvRow.push(value.toFixed(1))
           } else {
             csvRow.push(value.toString())
-          }
-        } else if (header === 'Anomaly') {
-          if (value && row.MissedStep) {
-            csvRow.push(`Previous step ${row.MissedStep} missed`)
-          } else {
-            csvRow.push(value ? 'Yes' : 'No')
           }
         } else {
           csvRow.push(value?.toString() || '')
@@ -1215,18 +544,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                 ))}
               </select>
             </div>
-            <div className="filter-group">
-              <label>Anomaly:</label>
-              <select
-                className="filter-select"
-                value={anomalyFilter}
-                onChange={(e) => setAnomalyFilter(e.target.value)}
-              >
-                <option value="all">All</option>
-                <option value="yes">Yes Only</option>
-                <option value="no">No Only</option>
-              </select>
-            </div>
             <button 
               className="filter-clear-btn"
               onClick={() => {
@@ -1235,7 +552,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                 setSelectedSensor('')
                 setSelectedHP('')
                 setSelectedStep('')
-                setAnomalyFilter('all')
               }}
             >
               Clear Filters
@@ -1337,11 +653,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                         Step {sortConfig.key === 'Step' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
                     )}
-                    {visibleColumns.Anomaly && (
-                      <th onClick={() => handleSort('Anomaly')} className="sortable">
-                        Anomaly {sortConfig.key === 'Anomaly' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                    )}
                   </tr>
                 </thead>
                 <tbody>
@@ -1353,7 +664,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                     </tr>
                   ) : (
                     displayData.map((row, index) => (
-                      <tr key={index} className={row.Anomaly ? 'anomaly-row' : ''}>
+                      <tr key={index}>
                         {visibleColumns.Device_ID && <td>{row.Device_ID}</td>}
                         {visibleColumns.Sensor_ID && <td>{row.Sensor_ID}</td>}
                         {visibleColumns.HP && <td>{row.HP}</td>}
@@ -1366,15 +677,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                         {visibleColumns.TotalTime && <td>{row.TotalTime}</td>}
                         {visibleColumns.Heater_Temp && <td>{row.Heater_Temp.toFixed(1)}</td>}
                         {visibleColumns.Step && <td>{row.Step}</td>}
-                        {visibleColumns.Anomaly && (
-                          <td className={row.Anomaly ? 'anomaly-cell' : ''}>
-                            {row.Anomaly && row.MissedStep 
-                              ? `⚠️ Previous step ${row.MissedStep} missed` 
-                              : row.Anomaly 
-                                ? '⚠️ Yes' 
-                                : 'No'}
-                          </td>
-                        )}
                       </tr>
                     ))
                   )}
