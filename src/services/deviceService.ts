@@ -8,6 +8,21 @@ export interface SensorDataPoint {
   voltage: number
 }
 
+/** Full Firebase record - all 11 parameters. Do not ignore any columns. */
+export interface FirebaseRecord {
+  Duration: number
+  GasADC: number
+  GasRes: number
+  Heater_Temp: number
+  Hum: number
+  Press: number
+  Seq: number
+  Status: string | number
+  Step: number
+  Temp: number
+  Volt: number
+}
+
 export interface SensorTimestamp {
   timestamp: string // Format: "2025-01-01_19-29-47"
   data: SensorDataPoint
@@ -63,22 +78,42 @@ export interface SensorTimeSeriesDataPoint {
 }
 
 /**
- * Normalize Firebase record to SensorDataPoint.
- * Handles both record formats from schema:
- * - Format A (Device_1, Device_2): gas_adc, humidity, temperature, voltage
- * - Format B (Device_5): GasADC, Hum, Temp, Volt
+ * Normalize Firebase record to full FirebaseRecord (all 11 columns).
+ * Handles both record formats:
+ * - Format A: gas_adc, humidity, temperature, voltage
+ * - Format B: Duration, GasADC, GasRes, Heater_Temp, Hum, Press, Seq, Status, Step, Temp, Volt
  */
-export const normalizeReading = (reading: Record<string, unknown> | null | undefined): SensorDataPoint => {
+export const normalizeReading = (reading: Record<string, unknown> | null | undefined): FirebaseRecord => {
+  const def = (v: unknown) => (v !== undefined && v !== null ? (typeof v === 'number' ? v : Number(v) || 0) : 0)
+  const defStr = (v: unknown) => (v !== undefined && v !== null ? String(v) : '')
   if (!reading || typeof reading !== 'object') {
-    return { gas_adc: 0, humidity: 0, temperature: 0, voltage: 0 }
+    return {
+      Duration: 0, GasADC: 0, GasRes: 0, Heater_Temp: 0, Hum: 0, Press: 0,
+      Seq: 0, Status: '', Step: 0, Temp: 0, Volt: 0,
+    }
   }
   return {
-    gas_adc: Number(reading.gas_adc ?? reading.GasADC ?? 0),
-    humidity: Number(reading.humidity ?? reading.Hum ?? 0),
-    temperature: Number(reading.temperature ?? reading.Temp ?? 0),
-    voltage: Number(reading.voltage ?? reading.Volt ?? 0),
+    Duration: def(reading.Duration),
+    GasADC: def(reading.GasADC ?? reading.gas_adc),
+    GasRes: def(reading.GasRes),
+    Heater_Temp: def(reading.Heater_Temp),
+    Hum: def(reading.Hum ?? reading.humidity),
+    Press: def(reading.Press),
+    Seq: def(reading.Seq),
+    Status: reading.Status !== undefined && reading.Status !== null ? reading.Status : '',
+    Step: def(reading.Step),
+    Temp: def(reading.Temp ?? reading.temperature),
+    Volt: def(reading.Volt ?? reading.voltage),
   }
 }
+
+/** Get SensorDataPoint from FirebaseRecord (for backward compatibility) */
+export const recordToSensorDataPoint = (r: FirebaseRecord): SensorDataPoint => ({
+  gas_adc: r.GasADC,
+  humidity: r.Hum,
+  temperature: r.Temp,
+  voltage: r.Volt,
+})
 
 /**
  * Parse timestamp string to Date
@@ -231,9 +266,10 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
           Object.keys(hpData).forEach((timestampStr) => {
             const reading = hpData[timestampStr]
             if (reading && typeof reading === 'object') {
+              const record = normalizeReading(reading as Record<string, unknown>)
               sensorReadings.push({
                 timestamp: timestampStr,
-                data: normalizeReading(reading as Record<string, unknown>),
+                data: recordToSensorDataPoint(record),
               })
               totalReadings++
               
@@ -619,9 +655,10 @@ export const subscribeToSensorReadings = (
                   Object.keys(hpData).forEach((timestampStr) => {
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
+                      const record = normalizeReading(reading as Record<string, unknown>)
                       allTimestamps.push({
                         timestamp: timestampStr,
-                        data: normalizeReading(reading as Record<string, unknown>),
+                        data: recordToSensorDataPoint(record),
                       })
                     }
                   })
@@ -748,7 +785,7 @@ export const subscribeToTimeSeriesData = (
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
                       const timestamp = parseTimestamp(timestampStr)
-                      const data = normalizeReading(reading as Record<string, unknown>)
+                      const data = recordToSensorDataPoint(normalizeReading(reading as Record<string, unknown>))
                       allDataPoints.push({
                         timestamp: timestamp.getTime(),
                         time: timestamp.toISOString().substring(11, 16),
@@ -865,7 +902,7 @@ export const subscribeToSensorTimeSeriesData = (
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
                       const timestamp = parseTimestamp(timestampStr)
-                      const data = normalizeReading(reading as Record<string, unknown>)
+                      const data = recordToSensorDataPoint(normalizeReading(reading as Record<string, unknown>))
                       const value = parameter === 'adc' ? data.gas_adc
                         : parameter === 'temperature' ? data.temperature
                         : parameter === 'humidity' ? data.humidity

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ref, get } from 'firebase/database'
 import { database } from '../config/firebase'
-import { parseTimestamp, formatTimestampForDisplay, normalizeReading } from '../services/deviceService'
+import { parseTimestamp, formatTimestampForDisplay, normalizeReading, type FirebaseRecord } from '../services/deviceService'
 import './CSVViewer.css'
 
 // HP + Step → Temperature lookup (from user-provided specification)
@@ -62,14 +62,20 @@ interface CSVDataRow {
   Sensor_ID: string
   HP: string
   TimeStamp: string
+  // All 11 Firebase parameters (do not ignore any)
+  Duration: number
+  GasADC: number
+  GasRes: number
+  Heater_Temp: number
+  Hum: number
+  Press: number
+  Seq: number
+  Status: string | number
+  Step: number
   Temp: number
-  Hu: number
-  Vol: number
-  ADC: number
+  Volt: number
   SeqNO: number
   TotalTime: string
-  Heater_Temp: number
-  Step: number
   Delta_Sec?: number // Seconds since previous observation (same Sensor+HP); undefined for first obs
 }
 
@@ -98,14 +104,19 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
     HP: true,
     TimeStamp: true,
     Delta_Sec: true,
+    Duration: true,
+    GasADC: true,
+    GasRes: true,
+    Heater_Temp: true,
+    Hum: true,
+    Press: true,
+    Seq: true,
+    Status: true,
+    Step: true,
     Temp: true,
-    Hu: true,
-    Vol: true,
-    ADC: true,
+    Volt: true,
     SeqNO: true,
     TotalTime: true,
-    Heater_Temp: true,
-    Step: true,
   })
   
   // Pagination
@@ -133,13 +144,10 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           hpId: string
           timestampStr: string
           timestampTime: number
-          temperature: number
-          humidity: number
-          voltage: number
-          adc: number
+          record: FirebaseRecord
         }> = []
 
-        // Collect all data points from all sensors
+        // Collect all data points from all sensors (all 11 Firebase columns)
         Object.keys(deviceData).forEach((sensorId) => {
           if (sensorId.startsWith('BME')) {
             const sensorData = deviceData[sensorId]
@@ -154,17 +162,14 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
                       const timestamp = parseTimestamp(timestampStr)
-                      const data = normalizeReading(reading as Record<string, unknown>)
+                      const record = normalizeReading(reading as Record<string, unknown>)
 
                       allDataPoints.push({
                         sensorId,
                         hpId,
                         timestampStr,
                         timestampTime: timestamp.getTime(),
-                        temperature: data.temperature,
-                        humidity: data.humidity,
-                        voltage: data.voltage,
-                        adc: data.gas_adc,
+                        record,
                       })
                     }
                   })
@@ -236,8 +241,13 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
             stepCount = (tracker!.lastStep % MAX_STEPS) + 1
           }
 
-          // Heater_Temp from HP + Step lookup table
-          const heaterTemp = getHeaterTempForStep(point.hpId, stepCount)
+          // Heater_Temp: use Firebase value if present, else derive from HP+Step lookup
+          const heaterTemp = point.record.Heater_Temp > 0
+            ? point.record.Heater_Temp
+            : getHeaterTempForStep(point.hpId, stepCount)
+
+          // Step: use Firebase value if present, else use our calculated stepCount
+          const stepValue = point.record.Step > 0 ? point.record.Step : stepCount
 
           // Delta_Sec: seconds since previous observation (same Sensor+HP)
           const deltaSec = tracker
@@ -251,20 +261,26 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
           }
           sensorLastHp[point.sensorId] = point.hpId
 
+          // All 11 Firebase parameters - do not ignore any columns
           csvData.push({
             Device_ID: deviceId,
             Sensor_ID: point.sensorId,
             HP: point.hpId,
             TimeStamp: formatTimestampForDisplay(point.timestampStr),
-            Temp: point.temperature,
-            Hu: point.humidity,
-            Vol: point.voltage,
-            ADC: point.adc,
+            Delta_Sec: deltaSec,
+            Duration: point.record.Duration,
+            GasADC: point.record.GasADC,
+            GasRes: point.record.GasRes,
+            Heater_Temp: heaterTemp,
+            Hum: point.record.Hum,
+            Press: point.record.Press,
+            Seq: point.record.Seq,
+            Status: point.record.Status,
+            Step: stepValue,
+            Temp: point.record.Temp,
+            Volt: point.record.Volt,
             SeqNO: seqNo++,
             TotalTime: totalTimeFormatted,
-            Heater_Temp: heaterTemp,
-            Step: stepCount,
-            Delta_Sec: deltaSec,
           })
         })
 
@@ -417,7 +433,7 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
         if (header === 'Delta_Sec') {
           csvRow.push(value !== undefined && value !== null ? Number(value).toFixed(2) : '')
         } else if (typeof value === 'number') {
-          if (header === 'Temp' || header === 'Hu' || header === 'Vol' || header === 'ADC') {
+          if (['Temp', 'Hum', 'Volt', 'GasADC', 'GasRes', 'Press'].includes(header)) {
             csvRow.push(value.toFixed(3))
           } else if (header === 'Heater_Temp') {
             csvRow.push(value.toFixed(1))
@@ -629,24 +645,59 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                         Delta_Sec {sortConfig.key === 'Delta_Sec' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
                     )}
+                    {visibleColumns.Duration && (
+                      <th onClick={() => handleSort('Duration')} className="sortable">
+                        Duration {sortConfig.key === 'Duration' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.GasADC && (
+                      <th onClick={() => handleSort('GasADC')} className="sortable">
+                        GasADC {sortConfig.key === 'GasADC' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.GasRes && (
+                      <th onClick={() => handleSort('GasRes')} className="sortable">
+                        GasRes {sortConfig.key === 'GasRes' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Heater_Temp && (
+                      <th onClick={() => handleSort('Heater_Temp')} className="sortable">
+                        Heater_Temp {sortConfig.key === 'Heater_Temp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Hum && (
+                      <th onClick={() => handleSort('Hum')} className="sortable">
+                        Hum {sortConfig.key === 'Hum' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Press && (
+                      <th onClick={() => handleSort('Press')} className="sortable">
+                        Press {sortConfig.key === 'Press' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Seq && (
+                      <th onClick={() => handleSort('Seq')} className="sortable">
+                        Seq {sortConfig.key === 'Seq' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Status && (
+                      <th onClick={() => handleSort('Status')} className="sortable">
+                        Status {sortConfig.key === 'Status' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
+                    {visibleColumns.Step && (
+                      <th onClick={() => handleSort('Step')} className="sortable">
+                        Step {sortConfig.key === 'Step' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                      </th>
+                    )}
                     {visibleColumns.Temp && (
                       <th onClick={() => handleSort('Temp')} className="sortable">
                         Temp {sortConfig.key === 'Temp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
                     )}
-                    {visibleColumns.Hu && (
-                      <th onClick={() => handleSort('Hu')} className="sortable">
-                        Hu {sortConfig.key === 'Hu' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                    )}
-                    {visibleColumns.Vol && (
-                      <th onClick={() => handleSort('Vol')} className="sortable">
-                        Vol {sortConfig.key === 'Vol' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                    )}
-                    {visibleColumns.ADC && (
-                      <th onClick={() => handleSort('ADC')} className="sortable">
-                        ADC {sortConfig.key === 'ADC' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                    {visibleColumns.Volt && (
+                      <th onClick={() => handleSort('Volt')} className="sortable">
+                        Volt {sortConfig.key === 'Volt' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
                     )}
                     {visibleColumns.SeqNO && (
@@ -657,16 +708,6 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                     {visibleColumns.TotalTime && (
                       <th onClick={() => handleSort('TotalTime')} className="sortable">
                         TotalTime {sortConfig.key === 'TotalTime' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                    )}
-                    {visibleColumns.Heater_Temp && (
-                      <th onClick={() => handleSort('Heater_Temp')} className="sortable">
-                        Heater_Temp {sortConfig.key === 'Heater_Temp' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
-                      </th>
-                    )}
-                    {visibleColumns.Step && (
-                      <th onClick={() => handleSort('Step')} className="sortable">
-                        Step {sortConfig.key === 'Step' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                       </th>
                     )}
                   </tr>
@@ -688,14 +729,19 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                         {visibleColumns.Delta_Sec && (
                           <td>{row.Delta_Sec !== undefined ? row.Delta_Sec.toFixed(2) : '—'}</td>
                         )}
+                        {visibleColumns.Duration && <td>{row.Duration}</td>}
+                        {visibleColumns.GasADC && <td>{row.GasADC.toFixed(3)}</td>}
+                        {visibleColumns.GasRes && <td>{row.GasRes.toFixed(3)}</td>}
+                        {visibleColumns.Heater_Temp && <td>{row.Heater_Temp.toFixed(1)}</td>}
+                        {visibleColumns.Hum && <td>{row.Hum.toFixed(3)}</td>}
+                        {visibleColumns.Press && <td>{row.Press.toFixed(3)}</td>}
+                        {visibleColumns.Seq && <td>{row.Seq}</td>}
+                        {visibleColumns.Status && <td>{row.Status}</td>}
+                        {visibleColumns.Step && <td>{row.Step}</td>}
                         {visibleColumns.Temp && <td>{row.Temp.toFixed(3)}</td>}
-                        {visibleColumns.Hu && <td>{row.Hu.toFixed(3)}</td>}
-                        {visibleColumns.Vol && <td>{row.Vol.toFixed(3)}</td>}
-                        {visibleColumns.ADC && <td>{row.ADC.toFixed(3)}</td>}
+                        {visibleColumns.Volt && <td>{row.Volt.toFixed(3)}</td>}
                         {visibleColumns.SeqNO && <td>{row.SeqNO}</td>}
                         {visibleColumns.TotalTime && <td>{row.TotalTime}</td>}
-                        {visibleColumns.Heater_Temp && <td>{row.Heater_Temp.toFixed(1)}</td>}
-                        {visibleColumns.Step && <td>{row.Step}</td>}
                       </tr>
                     ))
                   )}
