@@ -1,0 +1,1456 @@
+{
+  "complete_schema": {
+    "structure": "Device_X / BME_XX / HP_XXX / timestamp / { record }",
+    "levels": {
+      "root": {
+        "keys": [
+          "Device_1",
+          "Device_2",
+          "Device_5"
+        ],
+        "count": 3,
+        "type": "object",
+        "description": "Device IDs (Device_1, Device_2, ...)"
+      },
+      "device": {
+        "keys": [
+          "BME_01",
+          "BME_02",
+          "BME_03",
+          "BME_04",
+          "BME_05",
+          "BME_06",
+          "BME_07",
+          "BME_08",
+          "BME_09",
+          "BME_10",
+          "BME_11",
+          "BME_12",
+          "BME_13",
+          "BME_14",
+          "BME_15",
+          "BME_16"
+        ],
+        "count": 16,
+        "type": "object",
+        "description": "Sensor IDs (BME_01 to BME_16)"
+      },
+      "sensor": {
+        "keys": [
+          "Hp_301",
+          "Hp_321",
+          "Hp_322",
+          "Hp_323",
+          "Hp_324",
+          "Hp_331",
+          "Hp_332",
+          "Hp_354",
+          "Hp_411",
+          "Hp_412",
+          "Hp_413",
+          "Hp_414",
+          "Hp_501",
+          "Hp_502",
+          "Hp_503",
+          "Hp_504"
+        ],
+        "count": 16,
+        "type": "object",
+        "description": "Heater Profile IDs (Hp_301, Hp_322, ...)"
+      },
+      "hp": {
+        "key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+        "type": "object",
+        "description": "Timestamp keys (YYYY-MM-DD_HH-MM-SS_nanoseconds)"
+      }
+    },
+    "record_fields": {
+      "keys": [
+        "Duration",
+        "GasADC",
+        "GasRes",
+        "Heater_Temp",
+        "Hum",
+        "Press",
+        "Seq",
+        "Status",
+        "Step",
+        "Temp",
+        "Volt",
+        "gas_adc",
+        "humidity",
+        "temperature",
+        "voltage"
+      ],
+      "count": 15,
+      "description": "Fields in each reading record",
+      "field_types": {
+        "gas_adc": {
+          "type": "integer",
+          "sample": 0
+        },
+        "humidity": {
+          "type": "integer",
+          "sample": 0
+        },
+        "temperature": {
+          "type": "integer",
+          "sample": 0
+        },
+        "voltage": {
+          "type": "integer",
+          "sample": 0
+        }
+      }
+    },
+    "stats": {
+      "total_devices": 3,
+      "total_sensors": 16,
+      "total_hps": 16,
+      "total_records": 11056
+    }
+  },
+  "detailed_schema": {
+    "_path": "root",
+    "_type": "object",
+    "_keys": [
+      "Device_1",
+      "Device_2",
+      "Device_5"
+    ],
+    "_key_count": 3,
+    "_children": {
+      "Device_1": {
+        "_path": "root/Device_1",
+        "_type": "object",
+        "_keys": [
+          "BME_13",
+          "BME_14"
+        ],
+        "_key_count": 2,
+        "_children": {
+          "BME_13": {
+            "_path": "root/Device_1/BME_13",
+            "_type": "object",
+            "_keys": [
+              "Hp_501"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_501": {
+                "_path": "root/Device_1/BME_13/Hp_501",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 105,
+                "_sample_keys": [
+                  "2026-02-02_09-35-31_614405000",
+                  "2026-02-02_09-35-34_514398000",
+                  "2026-02-02_09-35-34_902686000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_1/BME_13/Hp_501/2026-02-02_09-35-31_614405000",
+                  "_type": "object",
+                  "_keys": [
+                    "gas_adc",
+                    "humidity",
+                    "temperature",
+                    "voltage"
+                  ],
+                  "_field_types": {
+                    "gas_adc": "integer",
+                    "humidity": "integer",
+                    "temperature": "integer",
+                    "voltage": "integer"
+                  },
+                  "_sample_values": {
+                    "gas_adc": 0,
+                    "humidity": 0,
+                    "temperature": 0,
+                    "voltage": 0
+                  }
+                }
+              }
+            }
+          },
+          "BME_14": {
+            "_path": "root/Device_1/BME_14",
+            "_type": "object",
+            "_keys": [
+              "Hp_503"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_503": {
+                "_path": "root/Device_1/BME_14/Hp_503",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 99,
+                "_sample_keys": [
+                  "2026-02-02_09-35-31_809037000",
+                  "2026-02-02_09-35-34_708562000",
+                  "2026-02-02_09-35-35_096818000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_1/BME_14/Hp_503/2026-02-02_09-35-31_809037000",
+                  "_type": "object",
+                  "_keys": [
+                    "gas_adc",
+                    "humidity",
+                    "temperature",
+                    "voltage"
+                  ],
+                  "_field_types": {
+                    "gas_adc": "integer",
+                    "humidity": "integer",
+                    "temperature": "integer",
+                    "voltage": "float"
+                  },
+                  "_sample_values": {
+                    "gas_adc": 0,
+                    "humidity": 0,
+                    "temperature": 0,
+                    "voltage": 11.74542
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Device_2": {
+        "_path": "root/Device_2",
+        "_type": "object",
+        "_keys": [
+          "BME_11",
+          "BME_12",
+          "BME_15",
+          "BME_16"
+        ],
+        "_key_count": 4,
+        "_children": {
+          "BME_11": {
+            "_path": "root/Device_2/BME_11",
+            "_type": "object",
+            "_keys": [
+              "Hp_412"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_412": {
+                "_path": "root/Device_2/BME_11/Hp_412",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 120,
+                "_sample_keys": [
+                  "2026-02-01_23-03-04_147489000",
+                  "2026-02-01_23-03-04_907465000",
+                  "2026-02-01_23-03-14_217461000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_2/BME_11/Hp_412/2026-02-01_23-03-04_147489000",
+                  "_type": "object",
+                  "_keys": [
+                    "gas_adc",
+                    "humidity",
+                    "temperature",
+                    "voltage"
+                  ],
+                  "_field_types": {
+                    "gas_adc": "integer",
+                    "humidity": "float",
+                    "temperature": "float",
+                    "voltage": "float"
+                  },
+                  "_sample_values": {
+                    "gas_adc": 2863,
+                    "humidity": 61.17273,
+                    "temperature": 24.98279,
+                    "voltage": 2.26044
+                  }
+                }
+              }
+            }
+          },
+          "BME_12": {
+            "_path": "root/Device_2/BME_12",
+            "_type": "object",
+            "_keys": [
+              "Hp_414"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_414": {
+                "_path": "root/Device_2/BME_12/Hp_414",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 120,
+                "_sample_keys": [
+                  "2026-02-01_23-03-04_571916000",
+                  "2026-02-01_23-03-05_192901000",
+                  "2026-02-01_23-03-14_502904000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_2/BME_12/Hp_414/2026-02-01_23-03-04_571916000",
+                  "_type": "object",
+                  "_keys": [
+                    "gas_adc",
+                    "humidity",
+                    "temperature",
+                    "voltage"
+                  ],
+                  "_field_types": {
+                    "gas_adc": "integer",
+                    "humidity": "float",
+                    "temperature": "float",
+                    "voltage": "float"
+                  },
+                  "_sample_values": {
+                    "gas_adc": 3393,
+                    "humidity": 60.65496,
+                    "temperature": 25.38635,
+                    "voltage": 2.25238
+                  }
+                }
+              }
+            }
+          },
+          "BME_15": {
+            "_path": "root/Device_2/BME_15",
+            "_type": "object",
+            "_keys": [
+              "Hp_502"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_502": {
+                "_path": "root/Device_2/BME_15/Hp_502",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 100,
+                "_sample_keys": [
+                  "2026-02-01_23-04-07_831948000",
+                  "2026-02-01_23-04-08_226895000",
+                  "2026-02-01_23-04-12_540891000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_2/BME_15/Hp_502/2026-02-01_23-04-07_831948000",
+                  "_type": "object",
+                  "_keys": [
+                    "gas_adc",
+                    "humidity",
+                    "temperature",
+                    "voltage"
+                  ],
+                  "_field_types": {
+                    "gas_adc": "integer",
+                    "humidity": "float",
+                    "temperature": "float",
+                    "voltage": "float"
+                  },
+                  "_sample_values": {
+                    "gas_adc": 233,
+                    "humidity": 59.43323,
+                    "temperature": 25.54883,
+                    "voltage": 1.80513
+                  }
+                }
+              }
+            }
+          },
+          "BME_16": {
+            "_path": "root/Device_2/BME_16",
+            "_type": "object",
+            "_keys": [
+              "Hp_504"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_504": {
+                "_path": "root/Device_2/BME_16/Hp_504",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 92,
+                "_sample_keys": [
+                  "2026-02-01_23-04-07_839564000",
+                  "2026-02-01_23-04-08_234083000",
+                  "2026-02-01_23-04-12_548070000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_2/BME_16/Hp_504/2026-02-01_23-04-07_839564000",
+                  "_type": "object",
+                  "_keys": [
+                    "gas_adc",
+                    "humidity",
+                    "temperature",
+                    "voltage"
+                  ],
+                  "_field_types": {
+                    "gas_adc": "integer",
+                    "humidity": "float",
+                    "temperature": "float",
+                    "voltage": "float"
+                  },
+                  "_sample_values": {
+                    "gas_adc": 569,
+                    "humidity": 61.85474,
+                    "temperature": 25.3295,
+                    "voltage": 1.78095
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Device_5": {
+        "_path": "root/Device_5",
+        "_type": "object",
+        "_keys": [
+          "BME_01",
+          "BME_02",
+          "BME_03",
+          "BME_04",
+          "BME_05",
+          "BME_06",
+          "BME_07",
+          "BME_08",
+          "BME_09",
+          "BME_10",
+          "BME_11",
+          "BME_12",
+          "BME_13",
+          "BME_14",
+          "BME_15",
+          "BME_16"
+        ],
+        "_key_count": 16,
+        "_children": {
+          "BME_01": {
+            "_path": "root/Device_5/BME_01",
+            "_type": "object",
+            "_keys": [
+              "Hp_301"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_301": {
+                "_path": "root/Device_5/BME_01/Hp_301",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 878,
+                "_sample_keys": [
+                  "2026-02-01_11-10-33_768012000",
+                  "2026-02-01_11-10-39_830008000",
+                  "2026-02-01_11-10-40_431000000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_01/Hp_301/2026-02-01_11-10-33_768012000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 280,
+                    "GasADC": 2898,
+                    "GasRes": 2897771,
+                    "Heater_Temp": 100,
+                    "Hum": 49.82648,
+                    "Press": 953.71539,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.78638,
+                    "Volt": 2.55055
+                  }
+                }
+              }
+            }
+          },
+          "BME_02": {
+            "_path": "root/Device_5/BME_02",
+            "_type": "object",
+            "_keys": [
+              "Hp_331"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_331": {
+                "_path": "root/Device_5/BME_02/Hp_331",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 260,
+                "_sample_keys": [
+                  "2026-02-01_11-10-43_293000000",
+                  "2026-02-01_11-10-53_415998000",
+                  "2026-02-01_11-10-53_877002000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_02/Hp_331/2026-02-01_11-10-43_293000000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 9800,
+                    "GasADC": 3649,
+                    "GasRes": 15041542,
+                    "Heater_Temp": 50,
+                    "Hum": 64.79487,
+                    "Press": 953.41846,
+                    "Seq": 5,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.66329,
+                    "Volt": 2.55861
+                  }
+                }
+              }
+            }
+          },
+          "BME_03": {
+            "_path": "root/Device_5/BME_03",
+            "_type": "object",
+            "_keys": [
+              "Hp_321"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_321": {
+                "_path": "root/Device_5/BME_03/Hp_321",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 750,
+                "_sample_keys": [
+                  "2026-02-01_10-44-39_477722000",
+                  "2026-02-01_10-44-40_069724000",
+                  "2026-02-01_10-44-40_660718000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_03/Hp_321/2026-02-01_10-44-39_477722000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 6020,
+                    "GasADC": 3075,
+                    "GasRes": 4272229,
+                    "Heater_Temp": 100,
+                    "Hum": 43.65566,
+                    "Press": 953.7262,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 32.45847,
+                    "Volt": 2.43773
+                  }
+                }
+              }
+            }
+          },
+          "BME_04": {
+            "_path": "root/Device_5/BME_04",
+            "_type": "object",
+            "_keys": [
+              "Hp_323"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_323": {
+                "_path": "root/Device_5/BME_04/Hp_323",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 733,
+                "_sample_keys": [
+                  "2026-02-01_10-44-39_729231000",
+                  "2026-02-01_10-44-40_320202000",
+                  "2026-02-01_10-44-40_913196000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_04/Hp_323/2026-02-01_10-44-39_729231000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 6020,
+                    "GasADC": 3521,
+                    "GasRes": 11350191,
+                    "Heater_Temp": 70,
+                    "Hum": 47.63271,
+                    "Press": 953.40717,
+                    "Seq": 2,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 31.8114,
+                    "Volt": 2.45385
+                  }
+                }
+              }
+            }
+          },
+          "BME_05": {
+            "_path": "root/Device_5/BME_05",
+            "_type": "object",
+            "_keys": [
+              "Hp_322"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_322": {
+                "_path": "root/Device_5/BME_05/Hp_322",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 629,
+                "_sample_keys": [
+                  "2026-02-01_11-10-41_029120000",
+                  "2026-02-01_11-10-41_632124000",
+                  "2026-02-01_11-10-42_234131000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_05/Hp_322/2026-02-01_11-10-41_029120000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 8960,
+                    "GasADC": 3807,
+                    "GasRes": 21264114,
+                    "Heater_Temp": 100,
+                    "Hum": 52.84745,
+                    "Press": 953.6499,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.27953,
+                    "Volt": 2.38535
+                  }
+                }
+              }
+            }
+          },
+          "BME_06": {
+            "_path": "root/Device_5/BME_06",
+            "_type": "object",
+            "_keys": [
+              "Hp_324"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_324": {
+                "_path": "root/Device_5/BME_06/Hp_324",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 619,
+                "_sample_keys": [
+                  "2026-02-01_11-10-41_290628000",
+                  "2026-02-01_11-10-41_893595000",
+                  "2026-02-01_11-10-42_497612000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_06/Hp_324/2026-02-01_11-10-41_290628000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 8960,
+                    "GasADC": 4095,
+                    "GasRes": 102400000,
+                    "Heater_Temp": 70,
+                    "Hum": 55.29672,
+                    "Press": 953.67456,
+                    "Seq": 2,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.53395,
+                    "Volt": 2.34908
+                  }
+                }
+              }
+            }
+          },
+          "BME_07": {
+            "_path": "root/Device_5/BME_07",
+            "_type": "object",
+            "_keys": [
+              "Hp_332"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_332": {
+                "_path": "root/Device_5/BME_07/Hp_332",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 190,
+                "_sample_keys": [
+                  "2026-02-01_10-52-27_921256000",
+                  "2026-02-01_10-52-46_557256000",
+                  "2026-02-01_10-52-47_010194000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_07/Hp_332/2026-02-01_10-52-27_921256000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 14000,
+                    "GasADC": 4095,
+                    "GasRes": 93723272,
+                    "Heater_Temp": 50,
+                    "Hum": 68.58681,
+                    "Press": 953.6571,
+                    "Seq": 11,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.46712,
+                    "Volt": 2.52637
+                  }
+                }
+              }
+            }
+          },
+          "BME_08": {
+            "_path": "root/Device_5/BME_08",
+            "_type": "object",
+            "_keys": [
+              "Hp_354"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_354": {
+                "_path": "root/Device_5/BME_08/Hp_354",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 1436,
+                "_sample_keys": [
+                  "2026-02-01_10-52-07_396200000",
+                  "2026-02-01_10-52-07_987205000",
+                  "2026-02-01_10-52-09_697196000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_08/Hp_354/2026-02-01_10-52-07_396200000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 700,
+                    "GasADC": 275,
+                    "GasRes": 9161,
+                    "Heater_Temp": 320,
+                    "Hum": 64.95273,
+                    "Press": 953.69025,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.15407,
+                    "Volt": 2.54249
+                  }
+                }
+              }
+            }
+          },
+          "BME_09": {
+            "_path": "root/Device_5/BME_09",
+            "_type": "object",
+            "_keys": [
+              "Hp_411"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_411": {
+                "_path": "root/Device_5/BME_09/Hp_411",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 739,
+                "_sample_keys": [
+                  "2026-02-01_11-10-36_647104000",
+                  "2026-02-01_11-10-37_237103000",
+                  "2026-02-01_11-10-43_567101000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_09/Hp_411/2026-02-01_11-10-36_647104000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 6020,
+                    "GasADC": 2654,
+                    "GasRes": 1695715,
+                    "Heater_Temp": 100,
+                    "Hum": 53.64729,
+                    "Press": 953.65485,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 29.11815,
+                    "Volt": 2.47399
+                  }
+                }
+              }
+            }
+          },
+          "BME_10": {
+            "_path": "root/Device_5/BME_10",
+            "_type": "object",
+            "_keys": [
+              "Hp_413"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_413": {
+                "_path": "root/Device_5/BME_10/Hp_413",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 739,
+                "_sample_keys": [
+                  "2026-02-01_11-10-36_892631000",
+                  "2026-02-01_11-10-37_482578000",
+                  "2026-02-01_11-10-43_814576000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_10/Hp_413/2026-02-01_11-10-36_892631000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 6020,
+                    "GasADC": 3494,
+                    "GasRes": 10715500,
+                    "Heater_Temp": 70,
+                    "Hum": 49.72693,
+                    "Press": 953.56982,
+                    "Seq": 2,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.77708,
+                    "Volt": 2.38535
+                  }
+                }
+              }
+            }
+          },
+          "BME_11": {
+            "_path": "root/Device_5/BME_11",
+            "_type": "object",
+            "_keys": [
+              "Hp_412"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_412": {
+                "_path": "root/Device_5/BME_11/Hp_412",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 510,
+                "_sample_keys": [
+                  "2026-02-01_11-10-40_916759000",
+                  "2026-02-01_11-10-41_508760000",
+                  "2026-02-01_11-10-50_779758000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_11/Hp_412/2026-02-01_11-10-40_916759000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 8960,
+                    "GasADC": 2575,
+                    "GasRes": 1424695,
+                    "Heater_Temp": 100,
+                    "Hum": 56.55961,
+                    "Press": 953.80499,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.94287,
+                    "Volt": 2.55458
+                  }
+                }
+              }
+            }
+          },
+          "BME_12": {
+            "_path": "root/Device_5/BME_12",
+            "_type": "object",
+            "_keys": [
+              "Hp_414"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_414": {
+                "_path": "root/Device_5/BME_12/Hp_414",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 510,
+                "_sample_keys": [
+                  "2026-02-01_11-10-41_168295000",
+                  "2026-02-01_11-10-41_759253000",
+                  "2026-02-01_11-10-51_032235000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_12/Hp_414/2026-02-01_11-10-41_168295000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 8960,
+                    "GasADC": 2956,
+                    "GasRes": 3291281,
+                    "Heater_Temp": 70,
+                    "Hum": 51.42736,
+                    "Press": 954.07349,
+                    "Seq": 2,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.84111,
+                    "Volt": 2.55458
+                  }
+                }
+              }
+            }
+          },
+          "BME_13": {
+            "_path": "root/Device_5/BME_13",
+            "_type": "object",
+            "_keys": [
+              "Hp_501"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_501": {
+                "_path": "root/Device_5/BME_13/Hp_501",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 647,
+                "_sample_keys": [
+                  "2026-02-01_11-11-47_823296000",
+                  "2026-02-01_11-11-48_421290000",
+                  "2026-02-01_11-11-51_818287000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_13/Hp_501/2026-02-01_11-11-47_823296000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 3360,
+                    "GasADC": 1456,
+                    "GasRes": 122224,
+                    "Heater_Temp": 210,
+                    "Hum": 51.15925,
+                    "Press": 953.51678,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.90446,
+                    "Volt": 2.30879
+                  }
+                }
+              }
+            }
+          },
+          "BME_14": {
+            "_path": "root/Device_5/BME_14",
+            "_type": "object",
+            "_keys": [
+              "Hp_503"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_503": {
+                "_path": "root/Device_5/BME_14/Hp_503",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 640,
+                "_sample_keys": [
+                  "2026-02-01_11-11-48_082799000",
+                  "2026-02-01_11-11-48_679766000",
+                  "2026-02-01_11-11-52_078764000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_14/Hp_503/2026-02-01_11-11-48_082799000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 3360,
+                    "GasADC": 1199,
+                    "GasRes": 69584,
+                    "Heater_Temp": 210,
+                    "Hum": 51.17898,
+                    "Press": 953.44641,
+                    "Seq": 2,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 29.07487,
+                    "Volt": 2.30476
+                  }
+                }
+              }
+            }
+          },
+          "BME_15": {
+            "_path": "root/Device_5/BME_15",
+            "_type": "object",
+            "_keys": [
+              "Hp_502"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_502": {
+                "_path": "root/Device_5/BME_15/Hp_502",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 570,
+                "_sample_keys": [
+                  "2026-02-01_11-10-33_469436000",
+                  "2026-02-01_11-10-34_059435000",
+                  "2026-02-01_11-10-38_569433000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_15/Hp_502/2026-02-01_11-10-33_469436000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 4480,
+                    "GasADC": 1033,
+                    "GasRes": 48311,
+                    "Heater_Temp": 210,
+                    "Hum": 53.57257,
+                    "Press": 953.75061,
+                    "Seq": 1,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.79257,
+                    "Volt": 2.36923
+                  }
+                }
+              }
+            }
+          },
+          "BME_16": {
+            "_path": "root/Device_5/BME_16",
+            "_type": "object",
+            "_keys": [
+              "Hp_504"
+            ],
+            "_key_count": 1,
+            "_children": {
+              "Hp_504": {
+                "_path": "root/Device_5/BME_16/Hp_504",
+                "_type": "object",
+                "_key_pattern": "YYYY-MM-DD_HH-MM-SS_nanoseconds",
+                "_key_count": 570,
+                "_sample_keys": [
+                  "2026-02-01_11-10-33_714946000",
+                  "2026-02-01_11-10-34_304913000",
+                  "2026-02-01_11-10-38_816910000"
+                ],
+                "_record_schema": {
+                  "_path": "root/Device_5/BME_16/Hp_504/2026-02-01_11-10-33_714946000",
+                  "_type": "object",
+                  "_keys": [
+                    "Duration",
+                    "GasADC",
+                    "GasRes",
+                    "Heater_Temp",
+                    "Hum",
+                    "Press",
+                    "Seq",
+                    "Status",
+                    "Step",
+                    "Temp",
+                    "Volt"
+                  ],
+                  "_field_types": {
+                    "Duration": "integer",
+                    "GasADC": "integer",
+                    "GasRes": "integer",
+                    "Heater_Temp": "integer",
+                    "Hum": "float",
+                    "Press": "float",
+                    "Seq": "integer",
+                    "Status": "integer",
+                    "Step": "integer",
+                    "Temp": "float",
+                    "Volt": "float"
+                  },
+                  "_sample_values": {
+                    "Duration": 4480,
+                    "GasADC": 1000,
+                    "GasRes": 44896,
+                    "Heater_Temp": 210,
+                    "Hum": 54.44973,
+                    "Press": 953.54401,
+                    "Seq": 2,
+                    "Status": 176,
+                    "Step": 1,
+                    "Temp": 28.97088,
+                    "Volt": 2.36117
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

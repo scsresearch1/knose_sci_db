@@ -147,6 +147,31 @@ export const parseTimestamp = (timestampStr: string): Date => {
 }
 
 /**
+ * Parse timestamp string to seconds since epoch with nanosecond precision
+ * Format: "2026-01-01_15-13-29_679689000" (YYYY-MM-DD_HH-MM-SEC_NanoSEC)
+ * Returns: seconds as float (e.g. 1735737209.679689000) for Delta_Sec nanosecond precision
+ */
+export const parseTimestampToSecondsWithNanos = (timestampStr: string): number => {
+  const parts = timestampStr.split('_')
+  if (parts.length < 2) return 0
+
+  const [datePart, timePart, nanoPart] = parts
+  if (!datePart || !timePart) return 0
+
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour, minute, second] = timePart.split('-').map(Number)
+
+  if (isNaN(year) || isNaN(month) || isNaN(day) || isNaN(hour) || isNaN(minute) || isNaN(second)) {
+    return 0
+  }
+
+  const date = new Date(year, month - 1, day, hour, minute, second)
+  const secondsBase = date.getTime() / 1000
+  const nanos = nanoPart ? parseInt(nanoPart, 10) || 0 : 0
+  return secondsBase + nanos / 1e9
+}
+
+/**
  * Format timestamp string to display format
  * Input: "2026-01-01_15-13-29_679689000" (YYYY-MM-DD_HH-MM-SEC_NanoSEC)
  * Output: "01-01-2026-15:13:29:679689000" (MM-DD-YYYY-HH:MM:SS:NS)
