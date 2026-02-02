@@ -85,7 +85,6 @@ export interface SensorTimeSeriesDataPoint {
  */
 export const normalizeReading = (reading: Record<string, unknown> | null | undefined): FirebaseRecord => {
   const def = (v: unknown) => (v !== undefined && v !== null ? (typeof v === 'number' ? v : Number(v) || 0) : 0)
-  const defStr = (v: unknown) => (v !== undefined && v !== null ? String(v) : '')
   if (!reading || typeof reading !== 'object') {
     return {
       Duration: 0, GasADC: 0, GasRes: 0, Heater_Temp: 0, Hum: 0, Press: 0,
@@ -100,7 +99,9 @@ export const normalizeReading = (reading: Record<string, unknown> | null | undef
     Hum: def(reading.Hum ?? reading.humidity),
     Press: def(reading.Press),
     Seq: def(reading.Seq),
-    Status: reading.Status !== undefined && reading.Status !== null ? reading.Status : '',
+    Status: reading.Status !== undefined && reading.Status !== null
+      ? (typeof reading.Status === 'number' ? reading.Status : String(reading.Status))
+      : '',
     Step: def(reading.Step),
     Temp: def(reading.Temp ?? reading.temperature),
     Volt: def(reading.Volt ?? reading.voltage),
