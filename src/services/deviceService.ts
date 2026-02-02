@@ -20,7 +20,7 @@ export interface SensorData {
 }
 
 export interface DeviceData {
-  id: string // Device_1 to Device_10 (10 devices total)
+  id: string // Device_1, Device_2, etc. (auto-discovered from Firebase)
   name: string
   location: string
   status: 'online' | 'offline' | 'warning'
@@ -60,6 +60,24 @@ export interface SensorTimeSeriesDataPoint {
   timestamp: number
   timestampStr?: string // Original timestamp string for formatting (YYYY-MM-DD_HH-MM-SEC_NanoSEC)
   [sensorId: string]: string | number | undefined // Dynamic sensor IDs (BME01, BME02, etc.) with their values
+}
+
+/**
+ * Normalize Firebase record to SensorDataPoint.
+ * Handles both record formats from schema:
+ * - Format A (Device_1, Device_2): gas_adc, humidity, temperature, voltage
+ * - Format B (Device_5): GasADC, Hum, Temp, Volt
+ */
+export const normalizeReading = (reading: Record<string, unknown> | null | undefined): SensorDataPoint => {
+  if (!reading || typeof reading !== 'object') {
+    return { gas_adc: 0, humidity: 0, temperature: 0, voltage: 0 }
+  }
+  return {
+    gas_adc: Number(reading.gas_adc ?? reading.GasADC ?? 0),
+    humidity: Number(reading.humidity ?? reading.Hum ?? 0),
+    temperature: Number(reading.temperature ?? reading.Temp ?? 0),
+    voltage: Number(reading.voltage ?? reading.Volt ?? 0),
+  }
 }
 
 /**
@@ -131,11 +149,12 @@ const formatLastUpdate = (timestampStr: string): string => {
 
 /**
  * Process device data from Firebase
- * Structure: Device_X -> BME_XX -> HP_XXX -> timestamp -> {gas_adc, humidity, temperature, voltage}
- * - Device_1 to Device_10 (10 devices)
- * - Each device has 16 BME sensors (BME_01 to BME_16)
- * - Each sensor runs heater profiles like HP_301, HP_302, etc.
- * - Each heater profile contains timestamped readings
+ * Structure: Device_X -> BME_XX -> HP_XXX -> timestamp -> { record }
+ * - Devices auto-discovered: any Device_N (Device_1, Device_2, Device_5, etc.)
+ * - Each device has BME sensors (BME_01 to BME_16)
+ * - Each sensor runs heater profiles (Hp_301, Hp_322, etc.)
+ * - Record format A: gas_adc, humidity, temperature, voltage
+ * - Record format B: GasADC, Hum, Temp, Volt (normalized via normalizeReading)
  */
 interface FirebaseDeviceData {
   [sensorId: string]: {
@@ -214,12 +233,7 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
             if (reading && typeof reading === 'object') {
               sensorReadings.push({
                 timestamp: timestampStr,
-                data: {
-                  gas_adc: reading.gas_adc || 0,
-                  humidity: reading.humidity || 0,
-                  temperature: reading.temperature || 0,
-                  voltage: reading.voltage || 0,
-                },
+                data: normalizeReading(reading as Record<string, unknown>),
               })
               totalReadings++
               
@@ -418,9 +432,9 @@ const calculateSampleRate = (readings: SensorTimestamp[]): number => {
 }
 
 /**
- * Subscribe to device data changes
- * Supports all 10 devices: Device_1 through Device_10
- * Each device contains 16 BME sensors (BME_01 to BME_16) grouped together
+ * Subscribe to device data changes (real-time)
+ * Auto-discovers all devices in Firebase matching Device_X pattern
+ * New devices appear on dashboard automatically when added to Firebase
  */
 export const subscribeToDevices = (
   callback: (devices: DeviceData[]) => void,
@@ -439,8 +453,7 @@ export const subscribeToDevices = (
         const currentTime = Date.now()
         
         if (data) {
-          // Filter and process only devices matching Device_X pattern (Device_1 to Device_10)
-          // Each device contains 16 BME sensors grouped together
+          // Auto-discover all devices matching Device_X pattern (Device_1, Device_2, Device_5, etc.)
           const devicesArray: DeviceData[] = Object.keys(data)
             .filter(key => key.startsWith('Device_') && /^Device_\d+$/.test(key))
             .map((deviceId) => {
@@ -608,12 +621,7 @@ export const subscribeToSensorReadings = (
                     if (reading && typeof reading === 'object') {
                       allTimestamps.push({
                         timestamp: timestampStr,
-                        data: {
-                          gas_adc: reading.gas_adc || 0,
-                          humidity: reading.humidity || 0,
-                          temperature: reading.temperature || 0,
-                          voltage: reading.voltage || 0,
-                        }
+                        data: normalizeReading(reading as Record<string, unknown>),
                       })
                     }
                   })
@@ -740,14 +748,14 @@ export const subscribeToTimeSeriesData = (
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
                       const timestamp = parseTimestamp(timestampStr)
-                      
+                      const data = normalizeReading(reading as Record<string, unknown>)
                       allDataPoints.push({
                         timestamp: timestamp.getTime(),
                         time: timestamp.toISOString().substring(11, 16),
-                        temperature: reading.temperature || 0,
-                        humidity: reading.humidity || 0,
-                        voltage: reading.voltage || 0,
-                        adc: reading.gas_adc || 0,
+                        temperature: data.temperature,
+                        humidity: data.humidity,
+                        voltage: data.voltage,
+                        adc: data.gas_adc,
                       })
                     }
                   })
@@ -857,9 +865,11 @@ export const subscribeToSensorTimeSeriesData = (
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
                       const timestamp = parseTimestamp(timestampStr)
-                      // Map parameter names: adc -> gas_adc, others are lowercase
-                      const paramKey = parameter === 'adc' ? 'gas_adc' : parameter
-                      const value = reading[paramKey] || 0
+                      const data = normalizeReading(reading as Record<string, unknown>)
+                      const value = parameter === 'adc' ? data.gas_adc
+                        : parameter === 'temperature' ? data.temperature
+                        : parameter === 'humidity' ? data.humidity
+                        : data.voltage
                       allDataPoints.push({
                         timestampStr,
                         timestamp: timestamp.getTime(),

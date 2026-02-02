@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ref, get } from 'firebase/database'
 import { database } from '../config/firebase'
-import { parseTimestamp, formatTimestampForDisplay } from '../services/deviceService'
+import { parseTimestamp, formatTimestampForDisplay, normalizeReading } from '../services/deviceService'
 import './CSVViewer.css'
 
 // HP + Step → Temperature lookup (from user-provided specification)
@@ -154,16 +154,17 @@ const CSVViewer = ({ deviceId, deviceName, onClose }: CSVViewerProps) => {
                     const reading = hpData[timestampStr]
                     if (reading && typeof reading === 'object') {
                       const timestamp = parseTimestamp(timestampStr)
+                      const data = normalizeReading(reading as Record<string, unknown>)
 
                       allDataPoints.push({
                         sensorId,
                         hpId,
                         timestampStr,
                         timestampTime: timestamp.getTime(),
-                        temperature: reading.temperature || 0,
-                        humidity: reading.humidity || 0,
-                        voltage: reading.voltage || 0,
-                        adc: reading.gas_adc || 0,
+                        temperature: data.temperature,
+                        humidity: data.humidity,
+                        voltage: data.voltage,
+                        adc: data.gas_adc,
                       })
                     }
                   })

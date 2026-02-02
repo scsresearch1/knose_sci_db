@@ -116,33 +116,26 @@ const DevicesList = ({ onLogout }: DevicesListProps) => {
           {devices.length > 0 && (
             <div className="devices-count">
               <span className="devices-count-label">Total Devices:</span>
-              <span className="devices-count-value">{devices.length} / 10</span>
+              <span className="devices-count-value">{devices.length}</span>
             </div>
           )}
         </div>
 
         {devices.length === 0 ? (
           <div className="no-devices">
-            <p>No devices found. Please check your Firebase connection.</p>
-            <p className="no-devices-hint">Expected devices: Device_1 through Device_10</p>
+            <p>No devices found. Devices will appear automatically when data is added to Firebase.</p>
+            <p className="no-devices-hint">Expected format: Device_1, Device_2, etc. with BME sensors</p>
           </div>
         ) : (
-          <>
-            <div className="devices-grid">
-              {devices.map((device) => (
-                <DeviceCard
-                  key={device.id}
-                  device={device}
-                  onClick={() => handleDeviceClick(device.id)}
-                />
-              ))}
-            </div>
-            {devices.length < 10 && (
-              <div className="devices-warning">
-                <p>⚠️ Only {devices.length} device(s) found. Expected 10 devices (Device_1 through Device_10).</p>
-              </div>
-            )}
-          </>
+          <div className="devices-grid">
+            {devices.map((device) => (
+              <DeviceCard
+                key={device.id}
+                device={device}
+                onClick={() => handleDeviceClick(device.id)}
+              />
+            ))}
+          </div>
         )}
       </div>
     </div>

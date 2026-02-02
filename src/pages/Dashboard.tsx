@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ref, get } from 'firebase/database'
 import { database } from '../config/firebase'
-import { parseTimestamp } from '../services/deviceService'
+import { parseTimestamp, normalizeReading } from '../services/deviceService'
 import Header from '../components/Header'
 import SensorGrid from '../components/SensorGrid'
 import TimeSeriesChart from '../components/TimeSeriesChart'
@@ -116,15 +116,16 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
                 const reading = hpData[timestampStr]
                 if (reading && typeof reading === 'object') {
                   const timestamp = parseTimestamp(timestampStr)
+                  const data = normalizeReading(reading as Record<string, unknown>)
                   
                   allDataPoints.push({
                     sensorId,
                     timestamp: timestampStr,
                     timestampTime: timestamp.getTime(),
-                    temperature: reading.temperature || 0,
-                    humidity: reading.humidity || 0,
-                    voltage: reading.voltage || 0,
-                    adc: reading.gas_adc || 0,
+                    temperature: data.temperature,
+                    humidity: data.humidity,
+                    voltage: data.voltage,
+                    adc: data.gas_adc,
                   })
                 }
               })
