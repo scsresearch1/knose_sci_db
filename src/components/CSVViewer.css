@@ -12,6 +12,20 @@
   padding: 2rem;
   backdrop-filter: blur(4px);
   animation: fadeIn 0.2s ease-in;
+  overflow: auto;
+}
+
+@media (max-width: 768px) {
+  .csv-viewer-overlay {
+    padding: 0.5rem;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .csv-viewer-overlay {
+    padding: 0.25rem;
+  }
 }
 
 @keyframes fadeIn {
@@ -34,6 +48,15 @@
   flex-direction: column;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
   animation: slideUp 0.3s ease-out;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .csv-viewer-modal {
+    max-width: 100%;
+    max-height: 100%;
+    border-radius: 4px;
+  }
 }
 
 @keyframes slideUp {
@@ -54,6 +77,16 @@
   padding: 1.5rem;
   border-bottom: 1px solid #e0e0e0;
   background: #f8f9fa;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+@media (max-width: 768px) {
+  .csv-viewer-header {
+    padding: 1rem;
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 .csv-viewer-title {
@@ -61,12 +94,33 @@
   font-weight: 600;
   color: #212529;
   margin: 0;
+  word-break: break-word;
+  min-width: 0;
+}
+
+@media (max-width: 480px) {
+  .csv-viewer-title {
+    font-size: 1rem;
+  }
 }
 
 .csv-viewer-controls {
   display: flex;
   gap: 0.75rem;
   align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .csv-viewer-controls {
+    justify-content: flex-end;
+  }
+  
+  .csv-viewer-button {
+    min-width: auto;
+    padding: 0.5rem 1rem;
+    font-size: 0.8125rem;
+  }
 }
 
 .csv-viewer-date-selector {
@@ -217,6 +271,26 @@
   align-items: center;
 }
 
+@media (max-width: 480px) {
+  .csv-viewer-filters {
+    padding: 0.75rem;
+  }
+  
+  .filter-row {
+    gap: 0.75rem;
+  }
+  
+  .filter-input,
+  .filter-select {
+    min-width: 120px;
+  }
+  
+  .filter-clear-btn {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
 .filter-group {
   display: flex;
   flex-direction: column;
@@ -319,10 +393,13 @@
   overflow: auto;
   padding: 1rem;
   background: #ffffff;
+  min-height: 200px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .csv-viewer-table {
   width: 100%;
+  min-width: 800px;
   border-collapse: collapse;
   font-family: 'Courier New', monospace;
   font-size: 1rem;
@@ -499,11 +576,53 @@
 
   .csv-viewer-table {
     font-size: 0.75rem;
+    min-width: 600px;
   }
 
   .csv-viewer-table th,
   .csv-viewer-table td {
     padding: 0.5rem 0.375rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .csv-viewer-table-container {
+    padding: 0.5rem;
+  }
+
+  .csv-viewer-table {
+    font-size: 0.6875rem;
+    min-width: 500px;
+  }
+
+  .csv-viewer-table th,
+  .csv-viewer-table td {
+    padding: 0.375rem 0.25rem;
+  }
+  
+  .csv-viewer-footer {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .pagination-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .pagination-buttons {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .csv-viewer-table {
+    min-width: 400px;
+  }
+  
+  .page-info {
+    text-align: center;
   }
 }
 

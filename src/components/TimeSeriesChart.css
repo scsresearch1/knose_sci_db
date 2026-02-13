@@ -52,6 +52,43 @@
   border-radius: 2px;
   padding: 1rem;
   min-height: 400px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .chart-container {
+    min-height: 280px;
+    padding: 0.75rem;
+  }
+  
+  .chart-info {
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .chart-container {
+    min-height: 220px;
+    padding: 0.5rem;
+  }
+  
+  .sensor-toggle {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.6875rem;
+  }
+  
+  .legend-item {
+    min-width: 80px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+  
+  .legend-control-button {
+    padding: 0.375rem 1rem;
+    font-size: 0.8125rem;
+  }
 }
 
 .chart-info {

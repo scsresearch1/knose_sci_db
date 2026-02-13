@@ -24,15 +24,6 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
     }
   }
 
-  const formatUptime = (seconds?: number): string => {
-    if (seconds === undefined || seconds === null) return 'N/A'
-    const days = Math.floor(seconds / 86400)
-    const hours = Math.floor((seconds % 86400) / 3600)
-    const minutes = Math.floor((seconds % 3600) / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-  }
-
   const formatNumber = (num: number, decimals: number = 3): string => {
     return num.toFixed(decimals)
   }
@@ -97,41 +88,6 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
             <path d="M8 4v4l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
           <span>Last updated: {device.lastUpdateTimestamp || device.lastUpdate || 'Never'}</span>
-        </div>
-
-        <div className="device-metrics">
-          <div className="metric-row">
-            <span className="metric-label">Temperature:</span>
-            <span className="metric-value">{device.temperature ? formatNumber(device.temperature) : 'N/A'}°C</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">Voltage:</span>
-            <span className="metric-value">{device.voltage ? formatNumber(device.voltage) : 'N/A'}V</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">VCC:</span>
-            <span className="metric-value">{device.vcc ? formatNumber(device.vcc) : 'N/A'}V</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">Sensors:</span>
-            <span className="metric-value">{device.sensorCount || 0} active</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">Uptime:</span>
-            <span className="metric-value">{formatUptime(device.uptime)}</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">Data Points:</span>
-            <span className="metric-value">{device.dataPoints ? device.dataPoints.toLocaleString() : '0'}</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">Sample Rate:</span>
-            <span className="metric-value">{device.sampleRate ? formatNumber(device.sampleRate, 2) : '0.00'} Hz</span>
-          </div>
-          <div className="metric-row">
-            <span className="metric-label">Last Update:</span>
-            <span className="metric-value">{device.lastUpdate || 'Never'}</span>
-          </div>
         </div>
       </div>
     </div>
