@@ -42,6 +42,8 @@ export interface DeviceData {
   sensors: SensorData[] // Should contain 16 sensors (BME_01 to BME_16)
   sensorCount: number
   lastUpdate: string
+  /** Absolute last update timestamp (formatted), for UI display */
+  lastUpdateTimestamp?: string
   // Calculated fields
   temperature?: number
   voltage?: number
@@ -465,6 +467,7 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
     sensors, // All 16 BME sensors grouped together for this device (BME_01 to BME_16)
     sensorCount: sensors.length, // Should be 16 sensors per device
     lastUpdate: latestTimestamp ? formatLastUpdate(latestTimestamp) : 'Never',
+    lastUpdateTimestamp: latestTimestamp ? formatTimestampForDisplay(latestTimestamp) : '',
     temperature: avgTemperature,
     voltage: avgVoltage,
     vcc: avgVoltage * 1.84, // Approximate VCC calculation

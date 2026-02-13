@@ -93,9 +93,10 @@ const DeviceCard = ({ device, onClick }: DeviceCardProps) => {
 
         <div className="device-location">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M8 0C4.134 0 1 3.134 1 7c0 5.25 7 13 7 13s7-7.75 7-13c0-3.866-3.134-7-7-7zm0 9.5c-1.381 0-2.5-1.119-2.5-2.5S6.619 4.5 8 4.5s2.5 1.119 2.5 2.5S9.381 9.5 8 9.5z" fill="currentColor"/>
+            <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="2" />
+            <path d="M8 4v4l2 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          {device.location}
+          <span>Last updated: {device.lastUpdateTimestamp || device.lastUpdate || 'Never'}</span>
         </div>
 
         <div className="device-metrics">
