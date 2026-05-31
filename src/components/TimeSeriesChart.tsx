@@ -15,6 +15,7 @@ import {
   SensorTimeSeriesDataPoint,
   formatTimestampForDisplay,
 } from '../services/deviceService'
+import { getSensorColor } from '../utils/sensorColors'
 import './TimeSeriesChart.css'
 
 interface TimeSeriesChartProps {
@@ -32,18 +33,10 @@ const parameterConfig = {
   adc: { label: 'ADC' },
 } as const
 
-const getSensorColor = (sensorId: string): string => {
-  const sensorNumStr = sensorId.replace('BME_', '').replace('BME', '').replace('_', '')
-  const sensorNum = parseInt(sensorNumStr, 10) || 1
-  const group = Math.floor((sensorNum - 1) / 4)
-  const colors = [
-    ['#00d4ff', '#00a8cc', '#007a99', '#004c66'],
-    ['#00ff88', '#00cc6a', '#00994d', '#006630'],
-    ['#ffb800', '#cc9300', '#996e00', '#664900'],
-    ['#ff4444', '#cc3636', '#992828', '#661a1a'],
-  ]
-  return colors[group]?.[(sensorNum - 1) % 4] || '#7dd3fc'
-}
+const CHART_GRID = '#2a3544'
+const CHART_AXIS = '#9aa5b4'
+const CHART_TOOLTIP_BG = '#151c26'
+const CHART_TOOLTIP_BORDER = '#2a3544'
 
 const calculateSamplingRate = (dataPoints: SensorTimeSeriesDataPoint[]): string => {
   if (dataPoints.length < 2) return 'N/A'
@@ -76,14 +69,14 @@ interface ChartLinesProps {
 
 const ChartLines = memo(({ data, sensorIds, selectedSensors, yLabel }: ChartLinesProps) => (
   <ResponsiveContainer width="100%" height={400}>
-    <LineChart data={data} margin={{ top: 10, right: 30, left: 20, bottom: 10 }}>
-      <CartesianGrid strokeDasharray="3 3" stroke="var(--grid-color)" />
+    <LineChart data={data} margin={{ top: 10, right: 24, left: 8, bottom: 10 }}>
+      <CartesianGrid strokeDasharray="3 3" stroke={CHART_GRID} />
       <XAxis
         dataKey="timestamp"
         type="number"
         domain={['dataMin', 'dataMax']}
-        stroke="var(--text-secondary)"
-        tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+        stroke={CHART_AXIS}
+        tick={{ fill: CHART_AXIS, fontSize: 11, fontFamily: 'IBM Plex Mono, Consolas, monospace' }}
         interval={Math.max(0, Math.floor(data.length / 10))}
         tickFormatter={(value) => {
           const date = new Date(value)
@@ -91,19 +84,21 @@ const ChartLines = memo(({ data, sensorIds, selectedSensors, yLabel }: ChartLine
         }}
       />
       <YAxis
-        stroke="var(--text-secondary)"
-        tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+        stroke={CHART_AXIS}
+        tick={{ fill: CHART_AXIS, fontSize: 11, fontFamily: 'IBM Plex Mono, Consolas, monospace' }}
         domain={['auto', 'auto']}
-        label={{ value: yLabel, angle: -90, position: 'insideLeft', style: { fill: 'var(--text-secondary)' } }}
+        label={{ value: yLabel, angle: -90, position: 'insideLeft', style: { fill: CHART_AXIS, fontSize: 11, fontFamily: 'Source Sans 3, sans-serif' } }}
       />
       <Tooltip
         contentStyle={{
-          backgroundColor: 'var(--bg-panel)',
-          border: '1px solid var(--border-color)',
+          backgroundColor: CHART_TOOLTIP_BG,
+          border: `1px solid ${CHART_TOOLTIP_BORDER}`,
           borderRadius: '2px',
-          color: 'var(--text-primary)',
+          color: '#eef2f7',
+          fontFamily: 'IBM Plex Mono, Consolas, monospace',
+          fontSize: '12px',
         }}
-        labelStyle={{ color: 'var(--text-secondary)' }}
+        labelStyle={{ color: '#9aa5b4', fontFamily: 'Source Sans 3, sans-serif', fontSize: '11px' }}
         labelFormatter={(value) => {
           const dataPoint = data.find((d) => d.timestamp === value)
           if (dataPoint?.timestampStr) return formatTimestampForDisplay(dataPoint.timestampStr)
@@ -209,7 +204,7 @@ const TimeSeriesChart = ({ device, parameter, isFullData = true }: TimeSeriesCha
   if (!isFullData) {
     return (
       <div className="chart-loading">
-        <p>Loading chart data...</p>
+        <p>Loading chart data…</p>
       </div>
     )
   }
@@ -235,7 +230,7 @@ const TimeSeriesChart = ({ device, parameter, isFullData = true }: TimeSeriesCha
 
       <div className="chart-legend-custom">
         <div className="legend-header">
-          <div className="legend-title">Sensors (click to toggle):</div>
+          <div className="legend-title">Sensor Channels</div>
           <div className="legend-controls">
             <button type="button" className="legend-control-button" onClick={selectAll}>
               Select All
@@ -259,15 +254,15 @@ const TimeSeriesChart = ({ device, parameter, isFullData = true }: TimeSeriesCha
 
       <div className="chart-info">
         <div className="info-item">
-          <span className="info-label">Data Points:</span>
+          <span className="info-label">Data Points</span>
           <span className="info-value">{data.length}</span>
         </div>
         <div className="info-item">
-          <span className="info-label">Sampling Rate:</span>
+          <span className="info-label">Sampling Rate</span>
           <span className="info-value">{chartInfo.samplingRate}</span>
         </div>
         <div className="info-item">
-          <span className="info-label">Time Range:</span>
+          <span className="info-label">Time Range</span>
           <span className="info-value">{chartInfo.timeRange}</span>
         </div>
       </div>

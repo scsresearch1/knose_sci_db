@@ -351,6 +351,9 @@ const buildDeviceResult = (
   }
 }
 
+const createPlaceholderDevice = (deviceId: string): DeviceData =>
+  buildDeviceResult(deviceId, '', new Map(), [], 0)
+
 /** Fast path for device list — only normalizes readings at the latest timestamp */
 const processDeviceDataMinimal = (deviceId: string, deviceData: FirebaseDeviceData): DeviceData => {
   let latestTimestamp = ''
@@ -617,10 +620,18 @@ const sortDevices = (devices: DeviceData[]): DeviceData[] =>
     return numA - numB
   })
 
+let devicesListEmitScheduled = false
+
 const emitDevicesList = () => {
   if (!devicesListState) return
-  const devicesArray = sortDevices(Array.from(devicesListState.devicesById.values()))
-  devicesListState.callbacks.forEach((cb) => cb(devicesArray))
+  if (devicesListEmitScheduled) return
+  devicesListEmitScheduled = true
+  requestAnimationFrame(() => {
+    devicesListEmitScheduled = false
+    if (!devicesListState) return
+    const devicesArray = sortDevices(Array.from(devicesListState.devicesById.values()))
+    devicesListState.callbacks.forEach((cb) => cb(devicesArray))
+  })
 }
 
 const attachDeviceListListener = (deviceId: string) => {
@@ -663,9 +674,17 @@ const discoverAndAttachDevices = async (onError?: (error: Error) => void) => {
   if (!devicesListState) return
   try {
     const ids = await fetchDeviceIds()
+
+    for (const id of ids) {
+      if (!devicesListState.devicesById.has(id)) {
+        devicesListState.devicesById.set(id, createPlaceholderDevice(id))
+      }
+    }
+
     for (const id of ids) {
       attachDeviceListListener(id)
     }
+
     for (const [id, unsub] of devicesListState.listenerUnsubs) {
       if (!ids.includes(id)) {
         unsub()
@@ -674,6 +693,7 @@ const discoverAndAttachDevices = async (onError?: (error: Error) => void) => {
         delete devicesListState.deviceHashes[id]
       }
     }
+
     emitDevicesList()
   } catch (error) {
     console.error('Error discovering devices:', error)

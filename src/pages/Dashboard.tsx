@@ -200,7 +200,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
         <Header currentTime={currentTime} onLogout={onLogout} />
         <div className="loading-container">
           <div className="loading-spinner"></div>
-          <p>Loading device data...</p>
+          <p>Initializing instrument telemetry…</p>
         </div>
       </div>
     )
@@ -230,16 +230,25 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
       
       <div className="dashboard-header-section">
         <button className="back-button" onClick={handleBackToDevices}>
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
             <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          Back to Devices
+          Back to Inventory
         </button>
-        <h1 className="dashboard-device-title">{device.name} - {device.location}</h1>
+        <div className="instrument-banner-content">
+          <span className="instrument-eyebrow">Instrument Detail View</span>
+          <h1 className="dashboard-device-title">{device.name}</h1>
+          <div className="instrument-meta">
+            <span className="instrument-id">{device.id.replace('_', ' ')}</span>
+            <span className={`instrument-status-badge instrument-status-badge--${device.status}`}>
+              {device.status === 'warning' ? 'Degraded' : device.status.charAt(0).toUpperCase() + device.status.slice(1)}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="parameter-selector-section">
-        <h3 className="parameter-selector-title">Select Parameter</h3>
+        <h3 className="parameter-selector-title">Measurement Parameter</h3>
         <div className="parameter-buttons">
           <button
             className={`parameter-button ${selectedParameter === 'temperature' ? 'active' : ''}`}
@@ -272,9 +281,9 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
           <div className="dashboard-main">
             <div className="dashboard-section">
               <div className="section-header">
-                <h2 className="section-title">Time-Series Data Visualization</h2>
+                <h2 className="section-title">Time-Series Visualization</h2>
                 <div className="section-controls">
-                  <button className="control-button" onClick={handleExport}>Export</button>
+                  <button className="control-button" onClick={handleExport}>Export CSV</button>
                 </div>
               </div>
               <TimeSeriesChart device={chartDevice ?? device} parameter={selectedParameter} isFullData={isFullData && chartDevice !== null} />
@@ -282,7 +291,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
 
           <div className="dashboard-section">
             <div className="section-header">
-              <h2 className="section-title">Device Status & Control</h2>
+              <h2 className="section-title">Device Status &amp; Control</h2>
             </div>
             <DeviceStatus device={device} onViewData={() => setShowCSVViewer(true)} />
           </div>
@@ -291,7 +300,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
           <div className="dashboard-sidebar">
             <div className="dashboard-section">
               <div className="section-header">
-                <h2 className="section-title">Sensor Readings</h2>
+                <h2 className="section-title">Sensor Channel Map</h2>
               </div>
               <SensorGrid device={chartDevice ?? device} parameter={selectedParameter} isFullData={isFullData && chartDevice !== null} />
             </div>
