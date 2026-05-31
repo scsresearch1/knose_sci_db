@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ref, get } from 'firebase/database'
 import { database } from '../config/firebase'
@@ -22,10 +22,13 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
   const navigate = useNavigate()
   const [currentTime, setCurrentTime] = useState(new Date())
   const [device, setDevice] = useState<DeviceData | null>(null)
+  const [chartDevice, setChartDevice] = useState<DeviceData | null>(null)
+  const [isFullData, setIsFullData] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedParameter, setSelectedParameter] = useState<ParameterType>('temperature')
   const [showCSVViewer, setShowCSVViewer] = useState(false)
+  const chartUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -45,17 +48,30 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
     setIsLoading(true)
     setError(null)
 
-    // Subscribe to real-time updates for this device
     const unsubscribe = subscribeToDevice(
       deviceId,
       (deviceData) => {
         if (deviceData) {
+          const hasFullReadings = deviceData.sensors.some((s) => s.readings.length > 0)
+
           setDevice(deviceData)
+
+          if (!hasFullReadings) {
+            setIsFullData(false)
+          } else {
+            setIsFullData(true)
+            if (chartUpdateTimer.current) clearTimeout(chartUpdateTimer.current)
+            chartUpdateTimer.current = setTimeout(() => {
+              setChartDevice(deviceData)
+            }, 600)
+          }
+
           setError(null)
+          setIsLoading(false)
         } else {
           setError('Device not found')
+          setIsLoading(false)
         }
-        setIsLoading(false)
       },
       (err: Error) => {
         console.error('Error loading device:', err)
@@ -65,6 +81,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
     )
 
     return () => {
+      if (chartUpdateTimer.current) clearTimeout(chartUpdateTimer.current)
       unsubscribe()
     }
   }, [deviceId])
@@ -177,7 +194,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
     }
   }
 
-  if (isLoading) {
+  if (isLoading && !device) {
     return (
       <div className="dashboard">
         <Header currentTime={currentTime} onLogout={onLogout} />
@@ -189,7 +206,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
     )
   }
 
-  if (error || !device) {
+  if (error && !device) {
     return (
       <div className="dashboard">
         <Header currentTime={currentTime} onLogout={onLogout} />
@@ -201,6 +218,10 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
         </div>
       </div>
     )
+  }
+
+  if (!device) {
+    return null
   }
 
   return (
@@ -256,14 +277,14 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
                   <button className="control-button" onClick={handleExport}>Export</button>
                 </div>
               </div>
-              <TimeSeriesChart deviceId={deviceId!} parameter={selectedParameter} />
+              <TimeSeriesChart device={chartDevice ?? device} parameter={selectedParameter} isFullData={isFullData && chartDevice !== null} />
             </div>
 
           <div className="dashboard-section">
             <div className="section-header">
               <h2 className="section-title">Device Status & Control</h2>
             </div>
-            <DeviceStatus deviceId={deviceId!} onViewData={() => setShowCSVViewer(true)} />
+            <DeviceStatus device={device} onViewData={() => setShowCSVViewer(true)} />
           </div>
         </div>
 
@@ -272,7 +293,7 @@ const Dashboard = ({ onLogout }: DashboardProps) => {
               <div className="section-header">
                 <h2 className="section-title">Sensor Readings</h2>
               </div>
-              <SensorGrid deviceId={deviceId!} parameter={selectedParameter} />
+              <SensorGrid device={chartDevice ?? device} parameter={selectedParameter} isFullData={isFullData && chartDevice !== null} />
             </div>
           </div>
         </div>

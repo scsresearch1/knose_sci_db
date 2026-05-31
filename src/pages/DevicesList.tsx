@@ -28,11 +28,14 @@ const DevicesList = ({ onLogout }: DevicesListProps) => {
     setIsLoading(true)
     setError(null)
 
-    // Subscribe to Firebase real-time updates
+    let loadingTimeout: ReturnType<typeof setTimeout> | null = null
+
     const unsubscribe = subscribeToDevices(
       (fetchedDevices) => {
         setDevices(fetchedDevices)
-        setIsLoading(false)
+        if (fetchedDevices.length > 0) {
+          setIsLoading(false)
+        }
       },
       (err: Error) => {
         console.error('Error fetching devices:', err)
@@ -45,8 +48,11 @@ const DevicesList = ({ onLogout }: DevicesListProps) => {
       }
     )
 
+    loadingTimeout = setTimeout(() => setIsLoading(false), 15000)
+
     return () => {
       unsubscribe()
+      if (loadingTimeout) clearTimeout(loadingTimeout)
     }
   }, [])
 

@@ -1,5 +1,5 @@
 import { ref, onValue, off, get } from 'firebase/database'
-import { database } from '../config/firebase'
+import { database, DATABASE_URL } from '../config/firebase'
 
 export interface SensorDataPoint {
   gas_adc: number
@@ -32,7 +32,11 @@ export interface SensorData {
   id: string // BME_01 to BME_16 (16 sensors per device)
   readings: SensorTimestamp[]
   latestReading?: SensorDataPoint
+  /** Heater profile with the most recent reading for this sensor */
+  activeHeaterProfile?: string
 }
+
+export type ProcessDeviceMode = 'minimal' | 'full'
 
 export interface DeviceData {
   id: string // Device_1, Device_2, etc. (auto-discovered from Firebase)
@@ -44,6 +48,8 @@ export interface DeviceData {
   lastUpdate: string
   /** Absolute last update timestamp (formatted), for UI display */
   lastUpdateTimestamp?: string
+  /** Raw Firebase timestamp key for the latest reading */
+  rawLatestTimestamp?: string
   // Calculated fields
   temperature?: number
   voltage?: number
@@ -249,11 +255,8 @@ const getDeviceDataHash = (deviceData: FirebaseDeviceData | null | undefined): s
       for (const hpId of hpIds) {
         const hpData = sensorData[hpId]
         if (hpData && typeof hpData === 'object') {
-          const timestamps = Object.keys(hpData)
-          if (timestamps.length > 0) {
-            const sorted = [...timestamps].sort()
-            const latest = sorted[sorted.length - 1]
-            if (latest > lastTimestamp) lastTimestamp = latest
+          for (const ts of Object.keys(hpData)) {
+            if (ts > lastTimestamp) lastTimestamp = ts
           }
         }
       }
@@ -265,212 +268,81 @@ const getDeviceDataHash = (deviceData: FirebaseDeviceData | null | undefined): s
   }
 }
 
-const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): DeviceData => {
-  const sensors: SensorData[] = []
-  let latestTimestamp = ''
-  let earliestTimestamp = ''
-  let totalReadings = 0
+const MAX_READINGS_PER_SENSOR = 5000
 
-  // Debug: Log device structure to verify Firebase mapping
-  const deviceKeys = Object.keys(deviceData)
-  const sensorKeys = deviceKeys.filter(key => key.startsWith('BME'))
-  console.log(`[deviceService] Processing ${deviceId}:`, {
-    totalKeys: deviceKeys.length,
-    sensorKeys: sensorKeys,
-    sensorCount: sensorKeys.length
-  })
+/**
+ * Calculate sample rate from readings
+ */
+const calculateSampleRate = (readings: SensorTimestamp[]): number => {
+  if (readings.length < 2) return 0
 
-  // Process each sensor (BME_01-BME_16 - all 16 sensors per device)
-  Object.keys(deviceData).forEach((sensorId) => {
-    if (sensorId.startsWith('BME')) {
-      const sensorReadings: SensorTimestamp[] = []
-      
-      // Process heater profile entries (HP_301, HP_302, etc.)
-      // Each sensor can have multiple heater profiles
-      Object.keys(deviceData[sensorId]).forEach((hpId) => {
-        const hpData = deviceData[sensorId][hpId]
-        if (hpData && typeof hpData === 'object') {
-          // Process timestamp entries within this heater profile
-          Object.keys(hpData).forEach((timestampStr) => {
-            const reading = hpData[timestampStr]
-            if (reading && typeof reading === 'object') {
-              const record = normalizeReading(reading as Record<string, unknown>)
-              sensorReadings.push({
-                timestamp: timestampStr,
-                data: recordToSensorDataPoint(record),
-              })
-              totalReadings++
-              
-              // Track latest timestamp
-              if (!latestTimestamp || timestampStr > latestTimestamp) {
-                latestTimestamp = timestampStr
-              }
-              
-              // Track earliest timestamp (for uptime calculation)
-              if (!earliestTimestamp || timestampStr < earliestTimestamp) {
-                earliestTimestamp = timestampStr
-              }
-            }
-          })
-        }
-      })
+  const timestamps = readings.map(r => parseTimestamp(r.timestamp).getTime())
+  const intervals: number[] = []
 
-      // Sort by timestamp
-      sensorReadings.sort((a, b) => 
-        parseTimestamp(a.timestamp).getTime() - parseTimestamp(b.timestamp).getTime()
-      )
-
-      // Limit readings to prevent stack overflow with large datasets (devices list doesn't need full history)
-      const MAX_READINGS_PER_SENSOR = 5000
-      if (sensorReadings.length > MAX_READINGS_PER_SENSOR) {
-        sensorReadings.splice(0, sensorReadings.length - MAX_READINGS_PER_SENSOR)
-      }
-
-      // Get latest reading
-      const latestReading = sensorReadings.length > 0 
-        ? sensorReadings[sensorReadings.length - 1].data 
-        : undefined
-
-      sensors.push({
-        id: sensorId,
-        readings: sensorReadings,
-        latestReading,
-      })
-    }
-  })
-
-  // Recalculate total after limiting readings per sensor
-  totalReadings = sensors.reduce((sum, s) => sum + s.readings.length, 0)
-
-  // Sort sensors by ID to ensure proper grouping (BME_01, BME_02, ..., BME_16)
-  sensors.sort((a, b) => {
-    // Extract sensor numbers for comparison
-    const numA = parseInt(a.id.replace('BME_', '').replace('BME', '').replace('_', '')) || 0
-    const numB = parseInt(b.id.replace('BME_', '').replace('BME', '').replace('_', '')) || 0
-    return numA - numB
-  })
-
-  // Get readings from the latest timestamp across all sensors
-  // Find all sensors that have data at the latest timestamp
-  const readingsAtLatestTimestamp: SensorDataPoint[] = []
-  if (latestTimestamp) {
-    sensors.forEach(sensor => {
-      // Find reading at the latest timestamp for this sensor
-      const readingAtLatest = sensor.readings.find(r => r.timestamp === latestTimestamp)
-      if (readingAtLatest) {
-        readingsAtLatestTimestamp.push(readingAtLatest.data)
-      }
-    })
+  for (let i = 1; i < timestamps.length; i++) {
+    intervals.push((timestamps[i] - timestamps[i - 1]) / 1000)
   }
 
-  // Calculate aggregate values from readings at the latest timestamp
-  const avgTemperature = readingsAtLatestTimestamp.length > 0
-    ? readingsAtLatestTimestamp.reduce((sum, r) => sum + r.temperature, 0) / readingsAtLatestTimestamp.length
+  const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length
+  return avgInterval > 0 ? 1 / avgInterval : 0
+}
+
+/** Discover device IDs without downloading nested sensor history (fast REST shallow query) */
+export const fetchDeviceIds = async (): Promise<string[]> => {
+  const url = `${DATABASE_URL}.json?shallow=true`
+  const res = await fetch(url)
+  if (!res.ok) {
+    throw new Error(`Failed to discover devices (${res.status})`)
+  }
+  const data = await res.json()
+  if (!data || typeof data !== 'object') return []
+  return Object.keys(data)
+    .filter((key) => /^Device_\d+$/.test(key))
+    .sort((a, b) => {
+      const numA = parseInt(a.replace('Device_', ''), 10) || 0
+      const numB = parseInt(b.replace('Device_', ''), 10) || 0
+      return numA - numB
+    })
+}
+
+const buildDeviceResult = (
+  deviceId: string,
+  latestTimestamp: string,
+  readingsAtLatestTimestamp: Map<string, SensorDataPoint>,
+  sensors: SensorData[],
+  totalReadings: number,
+  uptime?: number
+): DeviceData => {
+  const readingsAtLatest = Array.from(readingsAtLatestTimestamp.values())
+  const avgTemperature = readingsAtLatest.length > 0
+    ? readingsAtLatest.reduce((sum, r) => sum + r.temperature, 0) / readingsAtLatest.length
+    : 0
+  const avgVoltage = readingsAtLatest.length > 0
+    ? readingsAtLatest.reduce((sum, r) => sum + r.voltage, 0) / readingsAtLatest.length
     : 0
 
-  const avgVoltage = readingsAtLatestTimestamp.length > 0
-    ? readingsAtLatestTimestamp.reduce((sum, r) => sum + r.voltage, 0) / readingsAtLatestTimestamp.length
-    : 0
-
-  // Determine status based on data freshness
-  // When data is actively updating in Firebase, status should be 'online'
   const lastUpdateTime = latestTimestamp ? parseTimestamp(latestTimestamp) : new Date(0)
-  const now = new Date()
-  const secondsSinceUpdate = (now.getTime() - lastUpdateTime.getTime()) / 1000
-  
-  // Status determination:
-  // - 'online': Data updated within last 60 seconds (actively updating)
-  // - 'warning': Data updated 60-120 seconds ago (slowing down)
-  // - 'offline': No updates for more than 120 seconds (stopped updating)
+  const secondsSinceUpdate = (Date.now() - lastUpdateTime.getTime()) / 1000
+
   let status: 'online' | 'offline' | 'warning' = 'online'
-  if (secondsSinceUpdate > 120) {
-    status = 'offline'
-  } else if (secondsSinceUpdate > 60) {
-    status = 'warning'
-  } else {
-    status = 'online' // Data is actively updating
-  }
+  if (secondsSinceUpdate > 120) status = 'offline'
+  else if (secondsSinceUpdate > 60) status = 'warning'
 
-  // Calculate uptime: sum of intervals between consecutive timestamps
-  // Collect all timestamps from all sensors, sort them, and sum the intervals
-  let uptime: number | undefined = undefined
-  if (sensors.length > 0) {
-    // Collect all unique timestamps from all sensors (use Set for O(1) lookup, avoids stack overflow)
-    const timestampSet = new Set<string>()
-    sensors.forEach(sensor => {
-      sensor.readings.forEach(reading => {
-        if (reading.timestamp) timestampSet.add(reading.timestamp)
-      })
-    })
-    const allTimestamps = Array.from(timestampSet)
-    
-    if (allTimestamps.length > 1) {
-      // Sort all timestamps chronologically
-      allTimestamps.sort((a, b) => {
-        const timeA = parseTimestamp(a).getTime()
-        const timeB = parseTimestamp(b).getTime()
-        return timeA - timeB
-      })
-      
-      // Debug: log first and last timestamps
-      console.log(`[${deviceId}] Uptime calculation:`, {
-        totalTimestamps: allTimestamps.length,
-        first: allTimestamps[0],
-        last: allTimestamps[allTimestamps.length - 1],
-        firstTime: parseTimestamp(allTimestamps[0]),
-        lastTime: parseTimestamp(allTimestamps[allTimestamps.length - 1])
-      })
-      
-      // Sum intervals between consecutive timestamps
-      // Only count intervals that are reasonable (within 1 hour) to avoid counting gaps
-      // between different data collection sessions
-      const MAX_INTERVAL_SECONDS = 3600 // 1 hour - if gap is larger, it's a new session
-      let totalUptime = 0
-      for (let i = 0; i < allTimestamps.length - 1; i++) {
-        const currentTime = parseTimestamp(allTimestamps[i]).getTime()
-        const nextTime = parseTimestamp(allTimestamps[i + 1]).getTime()
-        const intervalSeconds = (nextTime - currentTime) / 1000
-        
-        // Only sum intervals that are within reasonable threshold (active session)
-        if (intervalSeconds > 0 && intervalSeconds <= MAX_INTERVAL_SECONDS) {
-          totalUptime += intervalSeconds
-        } else if (intervalSeconds > MAX_INTERVAL_SECONDS) {
-          // Large gap detected - this is likely a break between sessions
-          console.log(`[${deviceId}] Skipping large gap:`, {
-            from: allTimestamps[i],
-            to: allTimestamps[i + 1],
-            intervalSeconds,
-            intervalHours: intervalSeconds / 3600
-          })
-        }
-      }
-      uptime = Math.floor(totalUptime)
-      
-      const days = Math.floor(uptime / 86400)
-      const hours = Math.floor((uptime % 86400) / 3600)
-      const minutes = Math.floor((uptime % 3600) / 60)
-      const secs = Math.floor(uptime % 60)
-      console.log(`[${deviceId}] Calculated uptime:`, uptime, 'seconds =', `${String(days).padStart(2, '0')}:${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`)
-    } else if (allTimestamps.length === 1) {
-      uptime = 0
-    }
-  }
-
-  // Extract device number from Device_X format (Device_1, Device_2, etc.)
   const deviceNum = deviceId.replace('Device_', '')
-  
+
   return {
     id: deviceId,
     name: `BME690 Sensor Array #${deviceNum.padStart(2, '0')}`,
     location: `Lab ${String.fromCharCode(64 + (parseInt(deviceNum) || 1) % 3 + 1)} - Chamber ${Math.ceil((parseInt(deviceNum) || 1) / 3)}`,
     status,
-    sensors, // All 16 BME sensors grouped together for this device (BME_01 to BME_16)
-    sensorCount: sensors.length, // Should be 16 sensors per device
+    sensors,
+    sensorCount: sensors.length,
     lastUpdate: latestTimestamp ? formatLastUpdate(latestTimestamp) : 'Never',
     lastUpdateTimestamp: latestTimestamp ? formatTimestampForDisplay(latestTimestamp) : '',
+    rawLatestTimestamp: latestTimestamp || undefined,
     temperature: avgTemperature,
     voltage: avgVoltage,
-    vcc: avgVoltage * 1.84, // Approximate VCC calculation
+    vcc: avgVoltage * 1.84,
     uptime,
     dataPoints: totalReadings,
     sampleRate: sensors.length > 0 && sensors[0].readings.length > 1
@@ -479,114 +351,372 @@ const processDeviceData = (deviceId: string, deviceData: FirebaseDeviceData): De
   }
 }
 
-/**
- * Calculate sample rate from readings
- */
-const calculateSampleRate = (readings: SensorTimestamp[]): number => {
-  if (readings.length < 2) return 0
-  
-  const timestamps = readings.map(r => parseTimestamp(r.timestamp).getTime())
-  const intervals: number[] = []
-  
-  for (let i = 1; i < timestamps.length; i++) {
-    intervals.push((timestamps[i] - timestamps[i - 1]) / 1000) // Convert to seconds
+/** Fast path for device list — only normalizes readings at the latest timestamp */
+const processDeviceDataMinimal = (deviceId: string, deviceData: FirebaseDeviceData): DeviceData => {
+  let latestTimestamp = ''
+  const sensorIdSet = new Set<string>()
+
+  Object.keys(deviceData).forEach((sensorId) => {
+    if (!sensorId.startsWith('BME')) return
+    const sensorData = deviceData[sensorId]
+    if (!sensorData || typeof sensorData !== 'object') return
+    sensorIdSet.add(sensorId)
+
+    Object.keys(sensorData).forEach((hpId) => {
+      if (!hpId.startsWith('Hp_') && !hpId.startsWith('HP_')) return
+      const hpData = sensorData[hpId]
+      if (!hpData || typeof hpData !== 'object') return
+      for (const timestampStr of Object.keys(hpData)) {
+        if (timestampStr > latestTimestamp) latestTimestamp = timestampStr
+      }
+    })
+  })
+
+  const readingsAtLatestTimestamp = new Map<string, SensorDataPoint>()
+  if (latestTimestamp) {
+    Object.keys(deviceData).forEach((sensorId) => {
+      if (!sensorId.startsWith('BME')) return
+      const sensorData = deviceData[sensorId]
+      if (!sensorData || typeof sensorData !== 'object') return
+
+      Object.keys(sensorData).forEach((hpId) => {
+        if (!hpId.startsWith('Hp_') && !hpId.startsWith('HP_')) return
+        const hpData = sensorData[hpId]
+        if (!hpData || typeof hpData !== 'object') return
+        const reading = hpData[latestTimestamp]
+        if (reading && typeof reading === 'object') {
+          readingsAtLatestTimestamp.set(
+            sensorId,
+            recordToSensorDataPoint(normalizeReading(reading as Record<string, unknown>))
+          )
+        }
+      })
+    })
   }
-  
-  const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length
-  return avgInterval > 0 ? 1 / avgInterval : 0
+
+  const sensors: SensorData[] = Array.from(sensorIdSet)
+    .sort((a, b) => {
+      const numA = parseInt(a.replace('BME_', '').replace('BME', '').replace('_', ''), 10) || 0
+      const numB = parseInt(b.replace('BME_', '').replace('BME', '').replace('_', ''), 10) || 0
+      return numA - numB
+    })
+    .map((id) => ({ id, readings: [] }))
+
+  return buildDeviceResult(deviceId, latestTimestamp, readingsAtLatestTimestamp, sensors, 0)
+}
+
+const processDeviceData = (
+  deviceId: string,
+  deviceData: FirebaseDeviceData,
+  options: { mode: ProcessDeviceMode } = { mode: 'full' }
+): DeviceData => {
+  if (options.mode === 'minimal') {
+    return processDeviceDataMinimal(deviceId, deviceData)
+  }
+
+  const sensors: SensorData[] = []
+  let latestTimestamp = ''
+  let totalReadings = 0
+  const readingsAtLatestTimestamp = new Map<string, SensorDataPoint>()
+  const sensorLatest: Record<string, { timestamp: string; data: SensorDataPoint; hpId: string }> = {}
+
+  Object.keys(deviceData).forEach((sensorId) => {
+    if (!sensorId.startsWith('BME')) return
+
+    const sensorReadings: SensorTimestamp[] = []
+    const sensorData = deviceData[sensorId]
+    if (!sensorData || typeof sensorData !== 'object') return
+
+    Object.keys(sensorData).forEach((hpId) => {
+      const isHeaterProfile = hpId.startsWith('Hp_') || hpId.startsWith('HP_')
+      if (!isHeaterProfile) return
+
+      const hpData = sensorData[hpId]
+      if (!hpData || typeof hpData !== 'object') return
+
+      Object.keys(hpData).forEach((timestampStr) => {
+        const reading = hpData[timestampStr]
+        if (!reading || typeof reading !== 'object') return
+
+        const record = normalizeReading(reading as Record<string, unknown>)
+        const dataPoint = recordToSensorDataPoint(record)
+        totalReadings++
+
+        if (timestampStr > latestTimestamp) {
+          latestTimestamp = timestampStr
+          readingsAtLatestTimestamp.clear()
+        }
+        if (timestampStr === latestTimestamp) {
+          readingsAtLatestTimestamp.set(sensorId, dataPoint)
+        }
+
+        const prev = sensorLatest[sensorId]
+        if (!prev || timestampStr > prev.timestamp) {
+          sensorLatest[sensorId] = { timestamp: timestampStr, data: dataPoint, hpId }
+        }
+
+        sensorReadings.push({ timestamp: timestampStr, data: dataPoint })
+      })
+    })
+
+    sensorReadings.sort((a, b) =>
+      parseTimestamp(a.timestamp).getTime() - parseTimestamp(b.timestamp).getTime()
+    )
+    if (sensorReadings.length > MAX_READINGS_PER_SENSOR) {
+      sensorReadings.splice(0, sensorReadings.length - MAX_READINGS_PER_SENSOR)
+    }
+
+    const latest = sensorLatest[sensorId]
+    sensors.push({
+      id: sensorId,
+      readings: sensorReadings,
+      latestReading: latest?.data,
+      activeHeaterProfile: latest?.hpId ?? 'N/A',
+    })
+  })
+
+  totalReadings = sensors.reduce((sum, s) => sum + s.readings.length, 0)
+
+  sensors.sort((a, b) => {
+    const numA = parseInt(a.id.replace('BME_', '').replace('BME', '').replace('_', ''), 10) || 0
+    const numB = parseInt(b.id.replace('BME_', '').replace('BME', '').replace('_', ''), 10) || 0
+    return numA - numB
+  })
+
+  let uptime: number | undefined
+  if (sensors.length > 0) {
+    const timestampSet = new Set<string>()
+    for (const sensor of sensors) {
+      for (const reading of sensor.readings) {
+        if (reading.timestamp) timestampSet.add(reading.timestamp)
+      }
+    }
+    const allTimestamps = Array.from(timestampSet)
+    if (allTimestamps.length > 1) {
+      allTimestamps.sort((a, b) =>
+        parseTimestamp(a).getTime() - parseTimestamp(b).getTime()
+      )
+      const MAX_INTERVAL_SECONDS = 3600
+      let totalUptime = 0
+      for (let i = 0; i < allTimestamps.length - 1; i++) {
+        const intervalSeconds =
+          (parseTimestamp(allTimestamps[i + 1]).getTime() - parseTimestamp(allTimestamps[i]).getTime()) / 1000
+        if (intervalSeconds > 0 && intervalSeconds <= MAX_INTERVAL_SECONDS) {
+          totalUptime += intervalSeconds
+        }
+      }
+      uptime = Math.floor(totalUptime)
+    } else if (allTimestamps.length === 1) {
+      uptime = 0
+    }
+  }
+
+  return buildDeviceResult(deviceId, latestTimestamp, readingsAtLatestTimestamp, sensors, totalReadings, uptime)
+}
+
+/** Build chart data from already-processed device (avoids duplicate Firebase reads) */
+/** Stable key for chart memoization — changes only when visible series data changes */
+export const getChartSeriesKey = (
+  device: DeviceData,
+  parameter: 'temperature' | 'humidity' | 'voltage' | 'adc',
+  limit: number = 60
+): string => {
+  const valueFromPoint = (data: SensorDataPoint): number => {
+    switch (parameter) {
+      case 'adc': return data.gas_adc
+      case 'temperature': return data.temperature
+      case 'humidity': return data.humidity
+      default: return data.voltage
+    }
+  }
+  const parts: string[] = [parameter]
+  for (const sensor of device.sensors) {
+    const tail = sensor.readings.slice(-limit)
+    if (tail.length === 0) {
+      parts.push(`${sensor.id}:0`)
+      continue
+    }
+    const first = tail[0]
+    const last = tail[tail.length - 1]
+    parts.push(`${sensor.id}:${tail.length}:${first.timestamp}:${valueFromPoint(first.data)}:${last.timestamp}:${valueFromPoint(last.data)}`)
+  }
+  return parts.join('|')
+}
+
+export const buildTimeSeriesFromDevice = (
+  device: DeviceData,
+  parameter: 'temperature' | 'humidity' | 'voltage' | 'adc',
+  limit: number = 60
+): { data: SensorTimeSeriesDataPoint[]; sensorIds: string[] } => {
+  const sensorIds = device.sensors.map((s) => s.id).sort()
+  const groupedByTimestamp = new Map<string, Map<string, number>>()
+
+  const valueFromPoint = (data: SensorDataPoint): number => {
+    switch (parameter) {
+      case 'adc': return data.gas_adc
+      case 'temperature': return data.temperature
+      case 'humidity': return data.humidity
+      default: return data.voltage
+    }
+  }
+
+  for (const sensor of device.sensors) {
+    const tail = sensor.readings.slice(-limit)
+    for (const reading of tail) {
+      if (!groupedByTimestamp.has(reading.timestamp)) {
+        groupedByTimestamp.set(reading.timestamp, new Map())
+      }
+      groupedByTimestamp.get(reading.timestamp)!.set(sensor.id, valueFromPoint(reading.data))
+    }
+  }
+
+  const data: SensorTimeSeriesDataPoint[] = Array.from(groupedByTimestamp.entries())
+    .map(([timestampStr, sensorValues]) => {
+      const timestamp = parseTimestamp(timestampStr)
+      const point: SensorTimeSeriesDataPoint = {
+        time: timestamp.toISOString().substring(11, 16),
+        timestamp: timestamp.getTime(),
+        timestampStr,
+      }
+      for (const sensorId of sensorIds) {
+        point[sensorId] = sensorValues.get(sensorId) ?? 0
+      }
+      return point
+    })
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-limit)
+
+  return { data, sensorIds }
 }
 
 /**
- * Subscribe to device data changes (real-time)
- * Auto-discovers all devices in Firebase matching Device_X pattern
- * New devices appear on dashboard automatically when added to Firebase
+ * Shared Firebase listeners — one connection per scope, many subscribers.
+ */
+type DevicesCallback = (devices: DeviceData[]) => void
+type DeviceCallback = (device: DeviceData | null) => void
+
+let devicesListState: {
+  callbacks: Set<DevicesCallback>
+  devicesById: Map<string, DeviceData>
+  deviceHashes: Record<string, string>
+  listenerUnsubs: Map<string, () => void>
+  discoveryInterval: ReturnType<typeof setInterval> | null
+} | null = null
+
+const deviceSubscriptions = new Map<string, {
+  callbacks: Set<DeviceCallback>
+  firebaseUnsub: (() => void) | null
+  fullProcessTimer: ReturnType<typeof setTimeout> | null
+  lastRaw: FirebaseDeviceData | null
+}>()
+
+const sortDevices = (devices: DeviceData[]): DeviceData[] =>
+  [...devices].sort((a, b) => {
+    const numA = parseInt(a.id.replace('Device_', ''), 10) || 0
+    const numB = parseInt(b.id.replace('Device_', ''), 10) || 0
+    return numA - numB
+  })
+
+const emitDevicesList = () => {
+  if (!devicesListState) return
+  const devicesArray = sortDevices(Array.from(devicesListState.devicesById.values()))
+  devicesListState.callbacks.forEach((cb) => cb(devicesArray))
+}
+
+const attachDeviceListListener = (deviceId: string) => {
+  if (!devicesListState || devicesListState.listenerUnsubs.has(deviceId)) return
+
+  const deviceRef = ref(database, deviceId)
+  const firebaseUnsub = onValue(deviceRef, (snapshot) => {
+    if (!devicesListState) return
+
+    if (!snapshot.exists()) {
+      devicesListState.devicesById.delete(deviceId)
+      delete devicesListState.deviceHashes[deviceId]
+      emitDevicesList()
+      return
+    }
+
+    const raw = snapshot.val() as FirebaseDeviceData
+    const hash = getDeviceDataHash(raw)
+    if (devicesListState.deviceHashes[deviceId] === hash) return
+    devicesListState.deviceHashes[deviceId] = hash
+
+    const processed = processDeviceData(deviceId, raw, { mode: 'minimal' })
+    if (processed.rawLatestTimestamp) {
+      const secondsSinceLatest =
+        (Date.now() - parseTimestamp(processed.rawLatestTimestamp).getTime()) / 1000
+      if (secondsSinceLatest < 300) processed.status = 'online'
+    }
+
+    devicesListState.devicesById.set(deviceId, processed)
+    emitDevicesList()
+  })
+
+  devicesListState.listenerUnsubs.set(deviceId, () => {
+    off(deviceRef)
+    firebaseUnsub()
+  })
+}
+
+const discoverAndAttachDevices = async (onError?: (error: Error) => void) => {
+  if (!devicesListState) return
+  try {
+    const ids = await fetchDeviceIds()
+    for (const id of ids) {
+      attachDeviceListListener(id)
+    }
+    for (const [id, unsub] of devicesListState.listenerUnsubs) {
+      if (!ids.includes(id)) {
+        unsub()
+        devicesListState.listenerUnsubs.delete(id)
+        devicesListState.devicesById.delete(id)
+        delete devicesListState.deviceHashes[id]
+      }
+    }
+    emitDevicesList()
+  } catch (error) {
+    console.error('Error discovering devices:', error)
+    onError?.(error as Error)
+  }
+}
+
+/**
+ * Subscribe to device list (real-time, per-device listeners — no full DB download)
  */
 export const subscribeToDevices = (
   callback: (devices: DeviceData[]) => void,
   onError?: (error: Error) => void
 ) => {
-  const devicesRef = ref(database)
-  
-  // Track last data snapshot to detect when data is actively updating
-  const deviceDataHashes: Record<string, string> = {}
-  
-  const unsubscribe = onValue(
-    devicesRef,
-    (snapshot) => {
-      try {
-        const data = snapshot.val()
-        const currentTime = Date.now()
-        
-        if (data) {
-          // Auto-discover all devices matching Device_X pattern (Device_1, Device_2, Device_5, etc.)
-          const devicesArray: DeviceData[] = Object.keys(data)
-            .filter(key => key.startsWith('Device_') && /^Device_\d+$/.test(key))
-            .map((deviceId) => {
-              const deviceData = data[deviceId]
-              
-              // Create a lightweight hash to detect changes (avoids stack overflow from JSON.stringify on large data)
-              const dataHash = getDeviceDataHash(deviceData)
-              const hasNewData = deviceDataHashes[deviceId] !== dataHash
-              
-              // Update hash for this device
-              deviceDataHashes[deviceId] = dataHash
-              
-              const processedDevice = processDeviceData(deviceId, deviceData)
-              
-              // If Firebase just received new data (data changed), immediately set to 'online'
-              // This ensures status updates immediately when data is actively updating
-              if (hasNewData && processedDevice.sensors.length > 0) {
-                // Check if there's any recent data (within last 5 minutes)
-                // Use reduce instead of Math.max(...spread) to avoid stack overflow with large arrays
-                let latestTimestamp = 0
-                for (const sensor of processedDevice.sensors) {
-                  for (const r of sensor.readings) {
-                    const t = parseTimestamp(r.timestamp).getTime()
-                    if (t > latestTimestamp) latestTimestamp = t
-                  }
-                }
-                
-                if (latestTimestamp > 0) {
-                  const secondsSinceLatest = (currentTime - latestTimestamp) / 1000
-                  
-                  // If data exists and is being updated (new data received), set to online
-                  if (secondsSinceLatest < 300) {
-                    processedDevice.status = 'online'
-                  }
-                }
-              }
-              
-              return processedDevice
-            })
-            .sort((a, b) => {
-              // Sort by device number (1-10)
-              const numA = parseInt(a.id.replace('Device_', '')) || 0
-              const numB = parseInt(b.id.replace('Device_', '')) || 0
-              return numA - numB
-            })
-          
-          callback(devicesArray)
-        } else {
-          callback([])
-        }
-      } catch (error) {
-        console.error('Error processing devices:', error)
-        if (onError) {
-          onError(error as Error)
-        }
-      }
-    },
-    (error) => {
-      console.error('Firebase error:', error)
-      if (onError) {
-        onError(error)
-      }
+  if (!devicesListState) {
+    devicesListState = {
+      callbacks: new Set(),
+      devicesById: new Map(),
+      deviceHashes: {},
+      listenerUnsubs: new Map(),
+      discoveryInterval: null,
     }
-  )
+    void discoverAndAttachDevices(onError)
+    devicesListState.discoveryInterval = setInterval(
+      () => { void discoverAndAttachDevices(onError) },
+      30000
+    )
+  }
+
+  devicesListState.callbacks.add(callback)
+  emitDevicesList()
 
   return () => {
-    off(devicesRef)
-    unsubscribe()
+    if (!devicesListState) return
+    devicesListState.callbacks.delete(callback)
+    if (devicesListState.callbacks.size === 0) {
+      devicesListState.listenerUnsubs.forEach((unsub) => unsub())
+      devicesListState.listenerUnsubs.clear()
+      if (devicesListState.discoveryInterval) {
+        clearInterval(devicesListState.discoveryInterval)
+      }
+      devicesListState = null
+    }
   }
 }
 
@@ -599,7 +729,7 @@ export const getDevice = async (deviceId: string): Promise<DeviceData | null> =>
     const snapshot = await get(deviceRef)
     
     if (snapshot.exists()) {
-      return processDeviceData(deviceId, snapshot.val())
+      return processDeviceData(deviceId, snapshot.val(), { mode: 'full' })
     }
     return null
   } catch (error) {
@@ -609,46 +739,74 @@ export const getDevice = async (deviceId: string): Promise<DeviceData | null> =>
 }
 
 /**
- * Subscribe to real-time updates for a single device
+ * Subscribe to real-time updates for a single device (shared listener per device)
+ * Emits minimal data immediately, then full history after processing (non-blocking UI)
  */
 export const subscribeToDevice = (
   deviceId: string,
   callback: (device: DeviceData | null) => void,
   onError?: (error: Error) => void
 ) => {
-  const deviceRef = ref(database, deviceId)
-  
-  const unsubscribe = onValue(
-    deviceRef,
-    (snapshot) => {
-      try {
-        if (snapshot.exists()) {
-          const rawData = snapshot.val()
-          console.log(`[deviceService] subscribeToDevice(${deviceId}): Received data, keys:`, Object.keys(rawData))
-          const deviceData = processDeviceData(deviceId, rawData)
-          callback(deviceData)
-        } else {
-          console.warn(`[deviceService] subscribeToDevice(${deviceId}): Device not found in Firebase`)
-          callback(null)
+  let sub = deviceSubscriptions.get(deviceId)
+  if (!sub) {
+    sub = { callbacks: new Set(), firebaseUnsub: null, fullProcessTimer: null, lastRaw: null }
+    deviceSubscriptions.set(deviceId, sub)
+
+    const deviceRef = ref(database, deviceId)
+    const firebaseUnsub = onValue(
+      deviceRef,
+      (snapshot) => {
+        try {
+          if (!snapshot.exists()) {
+            sub!.lastRaw = null
+            sub!.callbacks.forEach((cb) => cb(null))
+            return
+          }
+
+          const raw = snapshot.val() as FirebaseDeviceData
+          sub!.lastRaw = raw
+
+          const quick = processDeviceData(deviceId, raw, { mode: 'minimal' })
+          sub!.callbacks.forEach((cb) => cb(quick))
+
+          if (sub!.fullProcessTimer) clearTimeout(sub!.fullProcessTimer)
+          sub!.fullProcessTimer = setTimeout(() => {
+            try {
+              if (!sub!.lastRaw) return
+              const full = processDeviceData(deviceId, sub!.lastRaw, { mode: 'full' })
+              sub!.callbacks.forEach((cb) => cb(full))
+            } catch (error) {
+              console.error('Error processing full device data:', error)
+              onError?.(error as Error)
+            }
+          }, 800)
+        } catch (error) {
+          console.error('Error processing device:', error)
+          onError?.(error as Error)
         }
-      } catch (error) {
-        console.error('Error processing device:', error)
-        if (onError) {
-          onError(error as Error)
-        }
+      },
+      (error) => {
+        console.error('Firebase error:', error)
+        onError?.(error)
       }
-    },
-    (error) => {
-      console.error('Firebase error:', error)
-      if (onError) {
-        onError(error)
-      }
+    )
+    sub.firebaseUnsub = () => {
+      if (sub!.fullProcessTimer) clearTimeout(sub!.fullProcessTimer)
+      off(deviceRef)
+      firebaseUnsub()
     }
-  )
+  }
+
+  sub.callbacks.add(callback)
 
   return () => {
-    off(deviceRef)
-    unsubscribe()
+    const current = deviceSubscriptions.get(deviceId)
+    if (!current) return
+    current.callbacks.delete(callback)
+    if (current.callbacks.size === 0) {
+      current.firebaseUnsub?.()
+      deviceSubscriptions.delete(deviceId)
+    }
   }
 }
 
@@ -1015,7 +1173,7 @@ export const getAllDevices = async (): Promise<DeviceData[]> => {
       const data = snapshot.val()
       return Object.keys(data)
         .filter(key => key.startsWith('Device_') && /^Device_\d+$/.test(key))
-        .map((deviceId) => processDeviceData(deviceId, data[deviceId]))
+        .map((deviceId) => processDeviceData(deviceId, data[deviceId], { mode: 'minimal' }))
         .sort((a, b) => {
           // Sort by device number (1-10)
           const numA = parseInt(a.id.replace('Device_', '')) || 0

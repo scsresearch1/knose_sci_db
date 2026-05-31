@@ -5,6 +5,8 @@ const firebaseConfig = {
   databaseURL: 'https://knose-e1959-default-rtdb.firebaseio.com/'
 }
 
+export const DATABASE_URL = firebaseConfig.databaseURL
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig)
 
